@@ -105,7 +105,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.10",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.11",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -236,7 +236,7 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 r = (old_pixel & 0xFF0000);
                 g = (old_pixel & 0x00FF00);
                 b = (old_pixel & 0x0000FF);
-                bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)/256);//((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
                     r = r+evaluer[bw];
                     if (r>16711680)
                     {
@@ -281,7 +281,7 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 r = (med_pixel & 0xFF0000);
                 g = (med_pixel & 0x00FF00);
                 b = (med_pixel & 0x0000FF);
-                bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)/256);//int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
                     r = r+evaluer[bw];
                     if (r>16711680)
                     {
@@ -856,6 +856,7 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
     char *tmp;
+    tmp = "";
 
     _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
 
