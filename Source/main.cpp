@@ -1,7 +1,7 @@
 /*
-    Gradation Filter v1.10 for VirtualDub -- adjusts the
+    Gradation Filter v1.20 for VirtualDub -- adjusts the
     gradation curve.
-    Copyright (C) 2003 Alexander Nagiller
+    Copyright (C) 2005 Alexander Nagiller
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -36,12 +36,52 @@ int StartProc(FilterActivation *fa, const FilterFunctions *ff);
 int EndProc(FilterActivation *fa, const FilterFunctions *ff);
 long ParamProc(FilterActivation *fa, const FilterFunctions *ff);
 int InitProc(FilterActivation *fa, const FilterFunctions *ff);
+void DeinitProc(FilterActivation *fa, const FilterFunctions *ff);
 int ConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd);
 void StringProc(const FilterActivation *fa, const FilterFunctions *ff, char *str);
 void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc);
 bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen);
 
 ///////////////////////////////////////////////////////////////////////////
+static LRESULT CALLBACK FiWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+HINSTANCE g_hInst;
+
+const char BBFilterWindowName[]="BBFilterWindow";
+
+bool WINAPI DllMain(HINSTANCE hInst, ULONG ulReason, LPVOID lpReserved) {
+    g_hInst = hInst;
+    return TRUE;
+}
+
+ATOM RegisterFilterControl() {
+    WNDCLASS wc;
+
+    wc.style        = CS_DBLCLKS;
+    wc.lpfnWndProc  = FiWndProc;
+    wc.cbClsExtra   = 0;
+    wc.cbWndExtra   = 0;
+    wc.hInstance    = g_hInst;
+    wc.hIcon        = NULL;
+    wc.hCursor      = NULL;
+    wc.hbrBackground= (HBRUSH)(COLOR_3DFACE+1);
+    wc.lpszMenuName = NULL;
+    wc.lpszClassName= BBFilterWindowName;
+
+    return RegisterClass(&wc);
+};
+
+LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam){
+    switch(message){
+    case WM_MOUSEMOVE:
+        if (wParam & MK_LBUTTON)
+        {
+        SendMessage((GetParent (hwnd)),WM_USER + 100,(LOWORD (lParam)),(HIWORD (lParam)));
+        }
+        return 0;
+    }
+    return DefWindowProc (hwnd, message, wParam, lParam) ;
+}
 
 enum {
     CHANNEL_RGB             = 0,
@@ -105,14 +145,14 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.12",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.20",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
     sizeof(MyFilterData),   // inst_data_size
 
     InitProc,               // initProc
-    NULL,                   // deinitProc
+    DeinitProc,             // deinitProc
     RunProc,                // runProc
     NULL,                   // paramProc
     ConfigProc,             // configProc
@@ -131,6 +171,9 @@ extern "C" void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(Filte
 static FilterDefinition *fd;
 
 int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm, const FilterFunctions *ff, int& vdfd_ver, int& vdfd_compat) {
+    InitCommonControls();
+    RegisterFilterControl();
+
     if (!(fd = ff->addFilter(fm, &filterDef, sizeof(FilterDefinition))))
         return 1;
 
@@ -321,6 +364,10 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     return 0;
 }
 
+void DeinitProc(FilterActivation *fa, const FilterFunctions *ff) {
+    UnregisterClass("FiWndProc", g_hInst);
+}
+
 BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     MyFilterData *mfd = (MyFilterData *)GetWindowLong(hdlg, DWL_USER);
     int i;
@@ -366,6 +413,33 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 GrdDrawVBorder(GetDlgItem(hdlg, IDC_VBORDER), mfd);
             }
             return TRUE;
+
+        case WM_USER + 100:
+            if (wParam > 255){
+                wParam = 255;
+            }
+            if (lParam > 255){
+                lParam = 255;
+            }
+            mfd->value = wParam;
+            switch(mfd->channel_mode)
+            {
+            case 0:
+                mfd->ovalue[mfd->value]= (255-lParam);
+                break;
+            case 1:
+                mfd->ovaluer[mfd->value]= (255-lParam);
+                break;
+            case 2:
+                mfd->ovalueg[mfd->value]= (255-lParam);
+                break;
+            case 3:
+                mfd->ovalueb[mfd->value]= (255-lParam);
+                break;
+            }
+            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
+            mfd->ifp->RedoSystem();
+            break;
 
         case WM_HSCROLL:
             if ((HWND) lParam == GetDlgItem(hdlg, IDC_SVALUE))
