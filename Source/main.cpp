@@ -105,7 +105,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.11",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.12",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -236,34 +236,13 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 r = (old_pixel & 0xFF0000);
                 g = (old_pixel & 0x00FF00);
                 b = (old_pixel & 0x0000FF);
-                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)/256);//((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)>>8);//((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);
                     r = r+evaluer[bw];
-                    if (r>16711680)
-                    {
-                        r=16711680;
-                    }
-                    if (r<65536)
-                    {
-                        r=0;
-                    }
+                    if (r<65536) r=0; else if (r>16711680) r=16711680;
                     g = g+evalueg[bw];
-                    if (g>65280)
-                    {
-                        g=65280;
-                    }
-                    if (g<256)
-                    {
-                        g=0;
-                    }
+                    if (g<256) g=0; else if (g>65280) g=65280;
                     b = b+evalueb[bw];
-                    if (b>255)
-                    {
-                        b=255;
-                    }
-                    if (b<0)
-                    {
-                        b=0;
-                    }
+                    if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
             }
@@ -281,34 +260,13 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 r = (med_pixel & 0xFF0000);
                 g = (med_pixel & 0x00FF00);
                 b = (med_pixel & 0x0000FF);
-                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)/256);//int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)>>8);//int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);
                     r = r+evaluer[bw];
-                    if (r>16711680)
-                    {
-                        r=16711680;
-                    }
-                    if (r<65536)
-                    {
-                        r=0;
-                    }
+                    if (r<65536) r=0; else if (r>16711680) r=16711680;
                     g = g+evalueg[bw];
-                    if (g>65280)
-                    {
-                        g=65280;
-                    }
-                    if (g<256)
-                    {
-                        g=0;
-                    }
+                    if (g<256) g=0; else if (g>65280) g=65280;
                     b = b+evalueb[bw];
-                    if (b>255)
-                    {
-                        b=255;
-                    }
-                    if (b<0)
-                    {
-                        b=0;
-                    }
+                    if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
             }
