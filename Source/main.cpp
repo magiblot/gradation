@@ -59,15 +59,17 @@ static char *channel_names[]={
 
 enum {
     PROCESS_RGB     = 0,
-    PROCESS_RGBW    = 1,
-    PROCESS_FULL    = 2,
-    PROCESS_OFF     = 3,
+    PROCESS_FULL    = 1,
+    PROCESS_RGBW    = 2,
+    PROCESS_FULLW   = 3,
+    PROCESS_OFF     = 4,
 };
 
 static char *process_names[]={
-    "RGB",
+    "RGB only",
+    "RGB + R/G/B",
     "RGB weighted",
-    "RGB + R / G / B",
+    "RGB weighted + R/G/B",
     "off",
 };
 
@@ -83,7 +85,6 @@ typedef struct MyFilterData {
     int ovaluer[256];
     int ovalueg[256];
     int ovalueb[256];
-    int bwvalue[256];
     int value;
     int channel_mode;
     int process;
@@ -101,8 +102,8 @@ CScriptObject script_obj={
 struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
-    "gradation",            // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 0.99",
+    "gradation curves",            // name
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.00",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -162,7 +163,6 @@ int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     mfd->cvalueb = new Pixel32[256];
 
     for (i=0; i<256; i++) {
-        mfd->bwvalue[i] = (mfd->ovalue[i] - i);
         mfd->cvaluer[i] = (mfd->ovaluer[i] - i)*65536;
         mfd->cvalueg[i] = (mfd->ovalueg[i] - i)*256;
         mfd->cvalueb[i] = (mfd->ovalueb[i] - i);
@@ -185,9 +185,7 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
     const Pixel32 *cvaluer = mfd->cvaluer;
     const Pixel32 *cvalueg = mfd->cvalueg;
     const Pixel32 *cvalueb = mfd->cvalueb;
-    int *ovalue = mfd->ovalue;
-    int *bwvalue = mfd->bwvalue;
-    int r;
+    long r;
     int g;
     int b;
     int bw;
@@ -217,45 +215,8 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                r = (old_pixel & 0xFF0000);
-                g = (old_pixel & 0x00FF00);
-                b = (old_pixel & 0x0000FF);
-                r = r/65536;
-                g = g/256;
-                bw = (r+g+b)/3;
-                if (bwvalue[bw] != 0)
-                {
-                    r = r+bwvalue[bw];
-                    if (r<0)
-                    {
-                        r=0;
-                    };
-                    if (r>255)
-                    {
-                        r=255;
-                    };
-                    g = g+bwvalue[bw];
-                    if (g<0)
-                    {
-                        g=0;
-                    };
-                    if (g>255)
-                    {
-                        g=255;
-                    };
-                    b = b+bwvalue[bw];
-                    if (b<0)
-                    {
-                        b=0;
-                    };
-                    if (b>255)
-                    {
-                        b=255;
-                    };
-                };
-                r=r*65536;
-                g=g*256;
-                new_pixel = (r+g+b);
+                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                new_pixel = ((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + ((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
                 *dst++ = new_pixel;
             }
             src = (Pixel32 *)((char *)src + fa->src.modulo);
@@ -268,8 +229,38 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
-                new_pixel = ((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + ((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
+                r = (old_pixel & 0xFF0000);
+                g = (old_pixel & 0x00FF00);
+                b = (old_pixel & 0x0000FF);
+                bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                    r = r+evaluer[bw];
+                    if (r<65536 && r!=0)
+                    {
+                        r=65536;
+                    }
+                    if (r>16711680)
+                    {
+                        r=16711680;
+                    }
+                    g = g+evalueg[bw];
+                    if (g<256 && g!=0)
+                    {
+                        g=255;
+                    }
+                    if (g>65280)
+                    {
+                        g=65280;
+                    }
+                    b = b+evalueb[bw];
+                    if (b<0)
+                    {
+                        b=0;
+                    }
+                    if (b>255)
+                    {
+                        b=255;
+                    }
+                new_pixel = (r+g+b);
                 *dst++ = new_pixel;
             }
             src = (Pixel32 *)((char *)src + fa->src.modulo);
@@ -277,6 +268,51 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
         }
     break;
     case 3:
+        for (h = 0; h < height; h++)
+        {
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                r = (med_pixel & 0xFF0000);
+                g = (med_pixel & 0x00FF00);
+                b = (med_pixel & 0x0000FF);
+                bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
+                    r = r+evaluer[bw];
+                    if (r<65536 && r!=0)
+                    {
+                        r=65536;
+                    }
+                    if (r>16711680)
+                    {
+                        r=16711680;
+                    }
+                    g = g+evalueg[bw];
+                    if (g<256 && g!=0)
+                    {
+                        g=255;
+                    }
+                    if (g>65280)
+                    {
+                        g=65280;
+                    }
+                    b = b+evalueb[bw];
+                    if (b<0)
+                    {
+                        b=0;
+                    }
+                    if (b>255)
+                    {
+                        b=255;
+                    }
+                new_pixel = (r+g+b);
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+        }
+    break;
+    case 4:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -295,6 +331,13 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 
 int EndProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+
+    delete[] mfd->evaluer; mfd->evaluer = NULL;
+    delete[] mfd->evalueg; mfd->evalueg = NULL;
+    delete[] mfd->evalueb; mfd->evalueb = NULL;
+    delete[] mfd->cvaluer; mfd->cvaluer = NULL;
+    delete[] mfd->cvalueg; mfd->cvalueg = NULL;
+    delete[] mfd->cvalueb; mfd->cvalueb = NULL;
 
     return 0;
 }
@@ -341,8 +384,9 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             switch (mfd->process)
             {
                 case PROCESS_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
-                case PROCESS_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
                 case PROCESS_FULL: CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED); break;
+                case PROCESS_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
+                case PROCESS_FULLW: CheckDlgButton(hdlg, IDC_FULLW,BST_CHECKED); break;
                 case PROCESS_OFF: CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED); break;
             }
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
@@ -399,16 +443,33 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             case IDOK:
                 EndDialog(hdlg, 0);
                 return TRUE;
+            case IDHELP:
+                {
+                char prog[256];
+                char path[256];
+                LPTSTR ptr;
+
+                GetModuleFileName(NULL, prog, 255);
+                GetFullPathName(prog, 255, path, &ptr);
+                *ptr = 0;
+                strcat(path, "plugins\\gradation.html");
+                ShellExecute(hdlg, "open", path, NULL, NULL, SW_SHOWNORMAL);
+                return TRUE;
+                }
             case IDC_RGB:
                 mfd->process = PROCESS_RGB;
+                mfd->ifp->RedoSystem();
+            break;
+            case IDC_FULL:
+                mfd->process = PROCESS_FULL;
                 mfd->ifp->RedoSystem();
             break;
             case IDC_RGBW:
                 mfd->process = PROCESS_RGBW;
                 mfd->ifp->RedoSystem();
             break;
-            case IDC_FULL:
-                mfd->process = PROCESS_FULL;
+            case IDC_FULLW:
+                mfd->process = PROCESS_FULLW;
                 mfd->ifp->RedoSystem();
             break;
             case IDC_OFF:
