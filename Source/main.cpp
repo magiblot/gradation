@@ -1,5 +1,5 @@
 /*
-    Gradation Filter v1.20 for VirtualDub -- adjusts the
+    Gradation Filter v1.21 for VirtualDub -- adjusts the
     gradation curve.
     Copyright (C) 2005 Alexander Nagiller
 
@@ -79,6 +79,9 @@ LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         SendMessage((GetParent (hwnd)),WM_USER + 100,(LOWORD (lParam)),(HIWORD (lParam)));
         }
         return 0;
+    case WM_LBUTTONDOWN:
+        SendMessage((GetParent (hwnd)),WM_USER + 101,0,0);
+        return 0;
     }
     return DefWindowProc (hwnd, message, wParam, lParam) ;
 }
@@ -121,13 +124,12 @@ typedef struct MyFilterData {
     Pixel32 *cvaluer;
     Pixel32 *cvalueg;
     Pixel32 *cvalueb;
-    int ovalue[256];
-    int ovaluer[256];
-    int ovalueg[256];
-    int ovalueb[256];
+    int ovalue[4][256];
     int value;
     int channel_mode;
     int process;
+    int xl;
+    int yl;
     char filename[1024];
 
 } MyFilterData;
@@ -145,7 +147,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.20",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.21",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -210,12 +212,12 @@ int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     mfd->cvalueb = new Pixel32[256];
 
     for (i=0; i<256; i++) {
-        mfd->cvaluer[i] = (mfd->ovaluer[i] - i)*65536;
-        mfd->cvalueg[i] = (mfd->ovalueg[i] - i)*256;
-        mfd->cvalueb[i] = (mfd->ovalueb[i] - i);
-        mfd->evaluer[i] = (mfd->ovalue[i] - i)*65536;
-        mfd->evalueg[i] = (mfd->ovalue[i] - i)*256;
-        mfd->evalueb[i] = (mfd->ovalue[i] - i);
+        mfd->cvaluer[i] = (mfd->ovalue[1][i] - i)*65536;
+        mfd->cvalueg[i] = (mfd->ovalue[2][i] - i)*256;
+        mfd->cvalueb[i] = (mfd->ovalue[3][i] - i);
+        mfd->evaluer[i] = (mfd->ovalue[0][i] - i)*65536;
+        mfd->evalueg[i] = (mfd->ovalue[0][i] - i)*256;
+        mfd->evalueb[i] = (mfd->ovalue[0][i] - i);
     }
     return 0;
 }
@@ -350,15 +352,17 @@ int EndProc(FilterActivation *fa, const FilterFunctions *ff) {
 int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
-    int ovalue[256];
+    int ovalue[4][256];
 
     mfd->value = 0;
     mfd->process = 0;
+    mfd->xl = 300;
+    mfd->yl = 300;
     for (i=0; i<256; i++) {
-        mfd->ovalue[i] = i;
-        mfd->ovaluer[i] = i;
-        mfd->ovalueg[i] = i;
-        mfd->ovalueb[i] = i;
+        mfd->ovalue[0][i] = i;
+        mfd->ovalue[1][i] = i;
+        mfd->ovalue[2][i] = i;
+        mfd->ovalue[3][i] = i;
     }
 
     return 0;
@@ -373,6 +377,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     int i;
     int r;
     int inv[256];
+    int cx;
+    int cy;
+    int ax;
+    int ay;
+    int inc;
 
     switch(msg) {
         case WM_INITDIALOG:
@@ -385,7 +394,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             SendMessage(hWnd, TBM_SETRANGE, (WPARAM)TRUE, MAKELONG(0, 255));
             SendMessage(hWnd, TBM_SETPOS, (WPARAM)TRUE, mfd->value);
             SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
+            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
             hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
             for(i=0; i<(sizeof channel_names/sizeof channel_names[0]); i++)
                 SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)channel_names[i]);
@@ -415,30 +424,81 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             return TRUE;
 
         case WM_USER + 100:
-            if (wParam > 255){
-                wParam = 255;
-            }
-            if (lParam > 255){
-                lParam = 255;
-            }
-            mfd->value = wParam;
-            switch(mfd->channel_mode)
+            if (wParam > 255)
             {
-            case 0:
-                mfd->ovalue[mfd->value]= (255-lParam);
-                break;
-            case 1:
-                mfd->ovaluer[mfd->value]= (255-lParam);
-                break;
-            case 2:
-                mfd->ovalueg[mfd->value]= (255-lParam);
-                break;
-            case 3:
-                mfd->ovalueb[mfd->value]= (255-lParam);
-                break;
+                ax = 255;
+            }
+            if (wParam <= 255)
+            {
+                ax = wParam;
+            }
+            if (lParam > 255)
+            {
+                ay = 0;
+            }
+            if (lParam <= 255)
+            {
+                ay = 255-lParam;
+            }
+            mfd->ovalue[mfd->channel_mode][ax]=(ay);
+
+            if (ax > mfd->xl)
+            {
+                if ((ax-(mfd->xl))>1 && (ax-(mfd->xl))<256 && (mfd->xl)<256 && (mfd->yl)<256)
+                {
+                    if (ay > (mfd->yl))
+                    {
+                        cy=(((ay-(mfd->yl))*255)/(ax-(mfd->xl)));
+                        for (cx=((mfd->xl)+1);cx<ax;cx++)
+                        {
+                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+(((cx-(mfd->xl))*cy)/255));
+                        }
+                    }
+                    else
+                    {
+                        cy=(((mfd->yl)-ay)*255)/(ax-(mfd->xl));
+                        for (cx=((mfd->xl)+1);cx<ax;cx++)
+                        {
+                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-(((cx-(mfd->xl))*cy)/255));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (((mfd->xl)-ax)>1 && ((mfd->xl)-ax)<100 && (mfd->xl)<256 && (mfd->yl)<256)
+                {
+                    if (ay >= mfd->yl)
+                    {
+                        cy=((ay-(mfd->yl))*100)/((mfd->xl)-ax);
+                        for (cx=((mfd->xl)-1);cx>ax;cx--)
+                        {
+                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+((((mfd->xl)-cx)*cy)/100));
+                        }
+                    }
+                    else
+                    {
+                        cy=(((mfd->yl)-ay)*100)/((mfd->xl)-ax);
+                        for (cx=((mfd->xl)-1);cx>ax;cx--)
+                        {
+                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-((((mfd->xl)-cx)*cy)/100));
+                        }
+                    }
+                }
+            }
+            mfd->xl = ax;
+            mfd->yl = ay;
+            if (ax = mfd->value)
+            {
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
             }
             GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
             mfd->ifp->RedoSystem();
+            break;
+
+        case WM_USER + 101:
+            mfd->xl = 300;
+            mfd->yl = 300;
             break;
 
         case WM_HSCROLL:
@@ -449,21 +509,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 {
                     mfd->value = value;
                     SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                        break;
-                    case 1:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                        break;
-                    case 2:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                        break;
-                    case 3:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                        break;
-                    }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
             }
         break;
@@ -519,21 +565,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (mfd->filename[0] != 0)
                 {
                     ImportCurve (hdlg, mfd);
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                        break;
-                    case 1:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                        break;
-                    case 2:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                        break;
-                    case 3:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                        break;
-                    }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                     GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                     mfd->ifp->RedoSystem();
                 }
@@ -598,21 +630,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->value++;
                     SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                     SendMessage(GetDlgItem(hdlg, IDC_SVALUE), TBM_SETPOS, (WPARAM)TRUE, mfd->value);
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                        break;
-                    case 1:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                        break;
-                    case 2:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                        break;
-                    case 3:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                        break;
-                    }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
                 break;
             case IDC_INPUTMINUS:
@@ -621,202 +639,55 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->value--;
                     SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                     SendMessage(GetDlgItem(hdlg, IDC_SVALUE), TBM_SETPOS, (WPARAM)TRUE, mfd->value);
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                        break;
-                    case 1:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                        break;
-                    case 2:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                        break;
-                    case 3:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                        break;
-                    }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
                 break;
             case IDC_OUTPUTPLUS:
-                switch(mfd->channel_mode)
+                if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255)
                 {
-                case 0:
-                    if (mfd->ovalue[mfd->value] < 255)
-                    {
-                        mfd->ovalue[mfd->value]++;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                    }
-                    break;
-                case 1:
-                    if (mfd->ovaluer[mfd->value] < 255)
-                    {
-                        mfd->ovaluer[mfd->value]++;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                    }
-                    break;
-                case 2:
-                    if (mfd->ovalueg[mfd->value] < 255)
-                    {
-                        mfd->ovalueg[mfd->value]++;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                    }
-                    break;
-                case 3:
-                    if (mfd->ovalueb[mfd->value] < 255)
-                    {
-                        mfd->ovalueb[mfd->value]++;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                    }
-                    break;
+                    mfd->ovalue[mfd->channel_mode][mfd->value]++;
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
                 GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_OUTPUTMINUS:
-                switch(mfd->channel_mode)
+                if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0)
                 {
-                case 0:
-                    if (mfd->ovalue[mfd->value] > 0)
-                    {
-                        mfd->ovalue[mfd->value]--;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                    }
-                    break;
-                case 1:
-                    if (mfd->ovaluer[mfd->value] > 0)
-                    {
-                        mfd->ovaluer[mfd->value]--;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                    }
-                    break;
-                case 2:
-                    if (mfd->ovalueg[mfd->value] > 0)
-                    {
-                        mfd->ovalueg[mfd->value]--;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                    }
-                    break;
-                case 3:
-                    if (mfd->ovalueb[mfd->value] > 0)
-                    {
-                        mfd->ovalueb[mfd->value]--;
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                    }
-                    break;
+                    mfd->ovalue[mfd->channel_mode][mfd->value]--;
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
                 }
                 GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_RESET:
-                for (i=0; i<256; i++) {
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        mfd->ovalue[i] = i;
-                        break;
-                    case 1:
-                        mfd->ovaluer[i] = i;
-                        break;
-                    case 2:
-                        mfd->ovalueg[i] = i;
-                        break;
-                    case 3:
-                        mfd->ovalueb[i] = i;
-                        break;
-                    }
-                }
-                switch(mfd->channel_mode)
+                for (i=0; i<256; i++)
                 {
-                case 0:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                    break;
-                case 1:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                    break;
-                case 2:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                    break;
-                case 3:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                    break;
+                    mfd->ovalue[mfd->channel_mode][i] = i;
                 }
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_INVERT:
                 r=255;
-                for (i=0; i<256; i++) {
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        inv[r] = mfd->ovalue[i];
-                        break;
-                    case 1:
-                        inv[r] = mfd->ovaluer[i];
-                        break;
-                    case 2:
-                        inv[r] = mfd->ovalueg[i];
-                        break;
-                    case 3:
-                        inv[r] = mfd->ovalueb[i];
-                        break;
-                    }
+                for (i=0; i<256; i++)
+                {
+                    inv[r] = mfd->ovalue[mfd->channel_mode][i];
                     r--;
                 }
-                for (i=0; i<256; i++) {
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        mfd->ovalue[i] = inv[i];
-                        break;
-                    case 1:
-                        mfd->ovaluer[i] = inv[i];
-                        break;
-                    case 2:
-                        mfd->ovalueg[i] = inv[i];
-                        break;
-                    case 3:
-                        mfd->ovalueb[i] = inv[i];
-                        break;
-                    }
-                }
-                switch(mfd->channel_mode)
+                for (i=0; i<256; i++)
                 {
-                case 0:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                    break;
-                case 1:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                    break;
-                case 2:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                    break;
-                case 3:
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                    break;
+                    mfd->ovalue[mfd->channel_mode][i] = inv[i];
                 }
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_CHANNEL:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
                     mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0);
-                    switch(mfd->channel_mode)
-                    {
-                    case 0:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
-                        break;
-                    case 1:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
-                        break;
-                    case 2:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
-                        break;
-                    case 3:
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
-                        break;
-                    }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                     GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
                     GrdDrawHBorder(GetDlgItem(hdlg, IDC_HBORDER), mfd);
                     GrdDrawVBorder(GetDlgItem(hdlg, IDC_VBORDER), mfd);
@@ -868,19 +739,19 @@ void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int
     tmp = *argv[1].asString();
     for (i=0; i<256; i++) {
         sscanf(tmp + 2*i,"%02x", &t);
-        mfd->ovalue[i] = t;
+        mfd->ovalue[0][i] = t;
     }
     for (i=256; i<512; i++) {
         sscanf(tmp + 2*i,"%02x", &t);
-        mfd->ovaluer[(i-256)] = t;
+        mfd->ovalue[1][(i-256)] = t;
     }
     for (i=512; i<768; i++) {
         sscanf(tmp + 2*i,"%02x", &t);
-        mfd->ovalueg[(i-512)] = t;
+        mfd->ovalue[2][(i-512)] = t;
     }
     for (i=768; i<1024; i++) {
         sscanf(tmp + 2*i,"%02x", &t);
-        mfd->ovalueb[(i-768)] = t;
+        mfd->ovalue[3][(i-768)] = t;
     }
 }
 
@@ -893,19 +764,19 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
 
     for (i=0; i<256; i++) {
-            _snprintf(tmp, buflen, "%02x",mfd->ovalue[i]);
+            _snprintf(tmp, buflen, "%02x",mfd->ovalue[0][i]);
             strcat (buf,tmp);
     }
     for (i=0; i<256; i++) {
-            _snprintf(tmp, buflen, "%02x",mfd->ovaluer[i]);
+            _snprintf(tmp, buflen, "%02x",mfd->ovalue[1][i]);
             strcat (buf,tmp);
     }
     for (i=0; i<256; i++) {
-            _snprintf(tmp, buflen, "%02x",mfd->ovalueg[i]);
+            _snprintf(tmp, buflen, "%02x",mfd->ovalue[2][i]);
             strcat (buf,tmp);
     }
     for (i=0; i<256; i++) {
-            _snprintf(tmp, buflen, "%02x",mfd->ovalueb[i]);
+            _snprintf(tmp, buflen, "%02x",mfd->ovalue[3][i]);
             strcat (buf,tmp);
     }
     strcat (buf, "\")");
@@ -970,16 +841,16 @@ void GrdDrawGradTable(HWND hWnd, MyFilterData *mfd)
     switch(mfd->channel_mode)
     {
     case 0:
-        GrdDrawTable(hWnd, mfd->ovalue);
+        GrdDrawTable(hWnd, mfd->ovalue[0]);
     break;
     case 1:
-        GrdDrawTable(hWnd, mfd->ovaluer);
+        GrdDrawTable(hWnd, mfd->ovalue[1]);
     break;
     case 2:
-        GrdDrawTable(hWnd, mfd->ovalueg);
+        GrdDrawTable(hWnd, mfd->ovalue[2]);
     break;
     case 3:
-        GrdDrawTable(hWnd, mfd->ovalueb);
+        GrdDrawTable(hWnd, mfd->ovalue[3]);
     break;
     }
 }
@@ -1131,16 +1002,16 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
             }
             fclose (pFile);
             for(i=0; i < 256; i++) {
-                mfd->ovalue[i] = stor[i];
+                mfd->ovalue[0][i] = stor[i];
             }
             for(i=256; i < 512; i++) {
-                mfd->ovaluer[(i-256)] = stor[i];
+                mfd->ovalue[1][(i-256)] = stor[i];
             }
             for(i=512; i < 768; i++) {
-                mfd->ovalueg[(i-512)] = stor[i];
+                mfd->ovalue[2][(i-512)] = stor[i];
             }
             for(i=768; i < 1024; i++) {
-                mfd->ovalueb[(i-768)] = stor[i];
+                mfd->ovalue[3][(i-768)] = stor[i];
             }
         }
         if (lSize < 769 && lSize > 256)
@@ -1151,13 +1022,13 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
             }
             fclose (pFile);
             for(i=0; i < 256; i++) {
-                mfd->ovaluer[i] = stor[i];
+                mfd->ovalue[1][i] = stor[i];
             }
             for(i=256; i < 512; i++) {
-                mfd->ovalueg[(i-256)] = stor[i];
+                mfd->ovalue[2][(i-256)] = stor[i];
             }
             for(i=512; i < 768; i++) {
-                mfd->ovalueb[(i-512)] = stor[i];
+                mfd->ovalue[3][(i-512)] = stor[i];
             }
         }
         if (lSize < 257)
@@ -1168,7 +1039,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
             }
             fclose (pFile);
             for(i=0; i < 256; i++) {
-                mfd->ovalue[i] = stor[i];
+                mfd->ovalue[0][i] = stor[i];
             }
         }
     }
@@ -1182,19 +1053,19 @@ char str [80];
 
     pFile = fopen (mfd->filename,"wb");
     for (i=0; i<256; i++) {
-        c = char (mfd->ovalue[i]);
+        c = char (mfd->ovalue[0][i]);
         fprintf (pFile, "%c",c);
     }
     for (i=0; i<256; i++) {
-        c = char (mfd->ovaluer[i]);
+        c = char (mfd->ovalue[1][i]);
         fprintf (pFile, "%c",c);
     }
     for (i=0; i<256; i++) {
-        c = char (mfd->ovalueg[i]);
+        c = char (mfd->ovalue[2][i]);
         fprintf (pFile, "%c",c);
     }
     for (i=0; i<256; i++) {
-        c = char (mfd->ovalueb[i]);
+        c = char (mfd->ovalue[3][i]);
         fprintf (pFile, "%c",c);
     }
     for (i=0; i<256; i++) {

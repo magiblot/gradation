@@ -17,6 +17,7 @@
 #define IDC_RESET                       1012
 #define IDC_INVERT                      1013
 #define IDC_GRADCURVE                   1014
+#define IDC_SMOOTH                      1015
 #define IDC_HBORDER                     1016
 #define IDC_VBORDER                     1017
 #define IDC_CHANNEL                     1018

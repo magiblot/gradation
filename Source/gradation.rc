@@ -64,10 +64,10 @@ BEGIN
     PUSHBUTTON      "Invert",IDC_INVERT,68,252,50,13
     CONTROL         "Slider1",IDC_SVALUE,"msctls_trackbar32",TBS_TOP |
                     TBS_NOTICKS | WS_TABSTOP,21,206,190,17
-    LTEXT           "Output Value:",IDC_STATIC,132,232,43,8
+    LTEXT           "Output Value:",IDC_STATIC,141,232,43,8
     LTEXT           "",IDC_OUTPUTVALUE,190,232,14,8
-    LTEXT           "Input Value:",IDC_STATIC,29,232,39,8
-    LTEXT           "",IDC_VALUE,76,232,20,8
+    LTEXT           "Input Value:",IDC_STATIC,68,232,39,8
+    LTEXT           "",IDC_VALUE,112,232,20,8
     PUSHBUTTON      "+",IDC_INPUTPLUS,216,205,9,9
     PUSHBUTTON      "-",IDC_INPUTMINUS,216,214,9,9
     PUSHBUTTON      "+",IDC_OUTPUTPLUS,216,227,9,9
