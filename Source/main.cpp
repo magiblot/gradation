@@ -1,7 +1,7 @@
 /*
     Gradation Filter for VirtualDub -- adjusts the
     gradation curve.
-    Copyright (C) 2003 A. Nagiller
+    Copyright (C) 2003 Alexander Nagiller
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -57,6 +57,19 @@ static char *channel_names[]={
     "Blue",
 };
 
+enum {
+    PROCESS_RGB     = 0,
+    PROCESS_RGBW    = 1,
+    PROCESS_FULL    = 2,
+    PROCESS_OFF     = 3,
+};
+
+static char *process_names[]={
+    "RGB",
+    "RGB weighted",
+    "RGB + R / G / B",
+    "off",
+};
 
 typedef struct MyFilterData {
     IFilterPreview *ifp;
@@ -70,12 +83,14 @@ typedef struct MyFilterData {
     int ovaluer[256];
     int ovalueg[256];
     int ovalueb[256];
+    int bwvalue[256];
     int value;
     int channel_mode;
+    int process;
 } MyFilterData;
 
 ScriptFunctionDef func_defs[]={
-    { (ScriptFunctionPtr)ScriptConfig, "Config", "0ii" },
+    { (ScriptFunctionPtr)ScriptConfig, "Config", "0is" },
     { NULL },
 };
 
@@ -86,10 +101,10 @@ CScriptObject script_obj={
 struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
-    "Gradation (0.92)",      // name
-    "Edits the Gradation Curve. Coring and Invert are also possible",
+    "gradation",            // name
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 0.99",
                             // desc
-    "A. Nagiller",          // maker
+    "Alexander Nagiller",   // maker
     NULL,                   // private_data
     sizeof(MyFilterData),   // inst_data_size
 
@@ -147,6 +162,7 @@ int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     mfd->cvalueb = new Pixel32[256];
 
     for (i=0; i<256; i++) {
+        mfd->bwvalue[i] = (mfd->ovalue[i] - i);
         mfd->cvaluer[i] = (mfd->ovaluer[i] - i)*65536;
         mfd->cvalueg[i] = (mfd->ovalueg[i] - i)*256;
         mfd->cvalueb[i] = (mfd->ovalueb[i] - i);
@@ -169,22 +185,110 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
     const Pixel32 *cvaluer = mfd->cvaluer;
     const Pixel32 *cvalueg = mfd->cvalueg;
     const Pixel32 *cvalueb = mfd->cvalueb;
+    int *ovalue = mfd->ovalue;
+    int *bwvalue = mfd->bwvalue;
+    int r;
+    int g;
+    int b;
+    int bw;
 
     src = (Pixel32 *)fa->src.data;
     dst = (Pixel32 *)fa->dst.data;
     Pixel32 old_pixel, new_pixel, med_pixel;
 
-    for (h = 0; h < height; h++)
+    switch(mfd->process)
     {
-        for (w = 0; w < width; w++)
+    case 0:
+        for (h = 0; h < height; h++)
         {
-            old_pixel = *src++;
-            med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
-            new_pixel = ((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + ((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
-            *dst++ = new_pixel;
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                new_pixel = ((old_pixel & 0xFF0000) + evaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + evalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + evalueb[(old_pixel & 0x0000FF)]);
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
         }
-        src = (Pixel32 *)((char *)src + fa->src.modulo);
-        dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+    break;
+    case 1:
+        for (h = 0; h < height; h++)
+        {
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                r = (old_pixel & 0xFF0000);
+                g = (old_pixel & 0x00FF00);
+                b = (old_pixel & 0x0000FF);
+                r = r/65536;
+                g = g/256;
+                bw = (r+g+b)/3;
+                if (bwvalue[bw] != 0)
+                {
+                    r = r+bwvalue[bw];
+                    if (r<0)
+                    {
+                        r=0;
+                    };
+                    if (r>255)
+                    {
+                        r=255;
+                    };
+                    g = g+bwvalue[bw];
+                    if (g<0)
+                    {
+                        g=0;
+                    };
+                    if (g>255)
+                    {
+                        g=255;
+                    };
+                    b = b+bwvalue[bw];
+                    if (b<0)
+                    {
+                        b=0;
+                    };
+                    if (b>255)
+                    {
+                        b=255;
+                    };
+                };
+                r=r*65536;
+                g=g*256;
+                new_pixel = (r+g+b);
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+        }
+    break;
+    case 2:
+        for (h = 0; h < height; h++)
+        {
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                new_pixel = ((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + ((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+        }
+    break;
+    case 3:
+        for (h = 0; h < height; h++)
+        {
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                new_pixel = old_pixel;
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+        }
+    break;
     }
     return 0;
 }
@@ -201,6 +305,7 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     int ovalue[256];
 
     mfd->value = 0;
+    mfd->process = 0;
     for (i=0; i<256; i++) {
         mfd->ovalue[i] = i;
         mfd->ovaluer[i] = i;
@@ -233,6 +338,13 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             for(i=0; i<(sizeof channel_names/sizeof channel_names[0]); i++)
                 SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)channel_names[i]);
             SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
+            switch (mfd->process)
+            {
+                case PROCESS_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
+                case PROCESS_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
+                case PROCESS_FULL: CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED); break;
+                case PROCESS_OFF: CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED); break;
+            }
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
 
             return TRUE;
@@ -287,6 +399,22 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             case IDOK:
                 EndDialog(hdlg, 0);
                 return TRUE;
+            case IDC_RGB:
+                mfd->process = PROCESS_RGB;
+                mfd->ifp->RedoSystem();
+            break;
+            case IDC_RGBW:
+                mfd->process = PROCESS_RGBW;
+                mfd->ifp->RedoSystem();
+            break;
+            case IDC_FULL:
+                mfd->process = PROCESS_FULL;
+                mfd->ifp->RedoSystem();
+            break;
+            case IDC_OFF:
+                mfd->process = PROCESS_OFF;
+                mfd->ifp->RedoSystem();
+            break;
             case IDC_INPUTPLUS:
                 if (mfd->value < 255)
                 {
@@ -546,32 +674,36 @@ int ConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
 
 void StringProc(const FilterActivation *fa, const FilterFunctions *ff, char *str) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-    int i;
-    char *tmp;
 
-    tmp = "";
-    strcpy (str, "");
-    for (i=0; i<256; i++) {
-        if (i == 0) {
-            strcpy (str, "(");
-            sprintf(tmp,"(%d",mfd->ovalue[i]);
-            strcat (str,tmp);
-        }
-        if (i > 0) {
-            sprintf(tmp,",%d",mfd->ovalue[i]);
-            strcat (str,tmp);
-        }
-    }
-    strcat (str, ")");
+    sprintf(str, " (mode: %s)",process_names[mfd->process]);
+
 }
 
 void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
     FilterActivation *fa = (FilterActivation *)lpVoid;
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
+    int t;
+    const char *tmp;
 
+    mfd->process = argv[0].asInt();
+
+    tmp = *argv[1].asString();
     for (i=0; i<256; i++) {
-        mfd->ovalue[i] = argv[i].asInt();
+        sscanf(tmp + 2*i,"%02x", &t);
+        mfd->ovalue[i] = t;
+    }
+    for (i=256; i<512; i++) {
+        sscanf(tmp + 2*i,"%02x", &t);
+        mfd->ovaluer[(i-256)] = t;
+    }
+    for (i=512; i<768; i++) {
+        sscanf(tmp + 2*i,"%02x", &t);
+        mfd->ovalueg[(i-512)] = t;
+    }
+    for (i=768; i<1024; i++) {
+        sscanf(tmp + 2*i,"%02x", &t);
+        mfd->ovalueb[(i-768)] = t;
     }
 }
 
@@ -579,21 +711,27 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
     char *tmp;
-
     tmp = "";
-    strcpy (buf, "");
+
+    _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
+
     for (i=0; i<256; i++) {
-        if (i == 0) {
-            strcpy (buf, "Config(");
-            _snprintf(tmp, buflen, "%d",mfd->ovalue[i]);
+            _snprintf(tmp, buflen, "%02x",mfd->ovalue[i]);
             strcat (buf,tmp);
-        }
-        if (i > 0) {
-            _snprintf(tmp, buflen, ", %d",mfd->ovalue[i]);
-            strcat (buf,tmp);
-        }
     }
-    strcat (buf, ")");
+    for (i=0; i<256; i++) {
+            _snprintf(tmp, buflen, "%02x",mfd->ovaluer[i]);
+            strcat (buf,tmp);
+    }
+    for (i=0; i<256; i++) {
+            _snprintf(tmp, buflen, "%02x",mfd->ovalueg[i]);
+            strcat (buf,tmp);
+    }
+    for (i=0; i<256; i++) {
+            _snprintf(tmp, buflen, "%02x",mfd->ovalueb[i]);
+            strcat (buf,tmp);
+    }
+    strcat (buf, "\")");
     return true;
 }
 

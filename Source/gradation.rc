@@ -52,27 +52,44 @@ END
 // Dialog
 //
 
-IDD_FILTER DIALOG DISCARDABLE  0, 0, 188, 106
+IDD_FILTER DIALOG DISCARDABLE  0, 0, 235, 306
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Filter: Gradation"
+CAPTION "Filter: Gradation Curves"
 FONT 8, "MS Sans Serif"
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,67,84,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,125,84,50,14
-    LTEXT           "",IDC_VALUE,23,46,27,11
-    CONTROL         "Input Value",IDC_STATIC,"Static",SS_LEFTNOWORDWRAP |
-                    WS_GROUP,23,33,39,10
-    LTEXT           "Output Value",IDC_STATIC,80,33,45,8
+    DEFPUSHBUTTON   "OK",IDOK,71,285,50,13
+    PUSHBUTTON      "Cancel",IDCANCEL,12,285,50,13
     CONTROL         "Slider1",IDC_SVALUE,"msctls_trackbar32",TBS_TOP |
-                    TBS_NOTICKS | WS_TABSTOP,14,7,147,21
-    LTEXT           "",IDC_OUTPUTVALUE,80,47,22,8
-    PUSHBUTTON      "+",IDC_OUTPUTPLUS,109,42,9,9
-    PUSHBUTTON      "-",IDC_OUTPUTMINUS,109,51,9,9
-    PUSHBUTTON      "-",IDC_INPUTMINUS,166,16,9,9
-    PUSHBUTTON      "+",IDC_INPUTPLUS,166,7,9,9
-    PUSHBUTTON      "Reset",IDC_RESET,125,66,50,12
-    PUSHBUTTON      "Invert",IDC_INVERT,7,66,50,12
-    PUSHBUTTON      "Show Preview",IDPREVIEW,7,84,50,14
+                    TBS_NOTICKS | WS_TABSTOP,22,206,190,17
+    LTEXT           "Output Value:",IDC_STATIC,140,232,45,8
+    LTEXT           "",IDC_OUTPUTVALUE,190,232,14,8
+    LTEXT           "Input Value:",IDC_STATIC,29,232,45,8
+    LTEXT           "",IDC_VALUE,76,232,20,8
+    PUSHBUTTON      "+",IDC_OUTPUTPLUS,216,227,9,9
+    PUSHBUTTON      "-",IDC_OUTPUTMINUS,216,236,9,9
+    PUSHBUTTON      "-",IDC_INPUTMINUS,216,214,9,9
+    PUSHBUTTON      "+",IDC_INPUTPLUS,216,205,9,9
+    PUSHBUTTON      "Reset",IDC_RESET,12,251,50,13
+    PUSHBUTTON      "Invert",IDC_INVERT,71,251,50,13
+    PUSHBUTTON      "Show Preview",IDPREVIEW,12,268,50,13
+    LTEXT           "",IDC_GRADCURVE,29,27,175,161,SS_SUNKEN | WS_BORDER |
+                    NOT WS_GROUP
+    RTEXT           "Channel:",IDC_STATIC,36,7,32,13,SS_CENTERIMAGE
+    CONTROL         "",IDC_HBORDER,"Static",SS_GRAYRECT | SS_SUNKEN |
+                    WS_BORDER,29,195,175,9
+    CONTROL         "",IDC_VBORDER,"Static",SS_GRAYRECT | SS_SUNKEN |
+                    WS_BORDER,12,27,10,161
+    COMBOBOX        IDC_CHANNEL,77,7,69,58,CBS_DROPDOWN | WS_VSCROLL |
+                    WS_TABSTOP
+    GROUPBOX        "Processing",IDC_STATIC,140,248,84,50
+    CONTROL         "RGB only",IDC_RGB,"Button",BS_AUTORADIOBUTTON,150,259,
+                    47,8
+    CONTROL         "RGB + R / G / B",IDC_FULL,"Button",BS_AUTORADIOBUTTON,
+                    150,278,69,8
+    CONTROL         "RGB weighted",IDC_RGBW,"Button",BS_AUTORADIOBUTTON,150,
+                    269,64,8
+    CONTROL         "no processing",IDC_OFF,"Button",BS_AUTORADIOBUTTON,150,
+                    287,60,8
 END
 
 
@@ -86,18 +103,40 @@ GUIDELINES DESIGNINFO DISCARDABLE
 BEGIN
     IDD_FILTER, DIALOG
     BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 175
-        VERTGUIDE, 23
-        VERTGUIDE, 80
+        LEFTMARGIN, 12
+        RIGHTMARGIN, 225
+        VERTGUIDE, 22
+        VERTGUIDE, 29
+        VERTGUIDE, 71
+        VERTGUIDE, 89
+        VERTGUIDE, 140
+        VERTGUIDE, 150
+        VERTGUIDE, 204
         TOPMARGIN, 7
-        BOTTOMMARGIN, 98
-        HORZGUIDE, 33
-        HORZGUIDE, 51
-        HORZGUIDE, 66
+        BOTTOMMARGIN, 298
+        HORZGUIDE, 27
+        HORZGUIDE, 86
+        HORZGUIDE, 188
+        HORZGUIDE, 195
+        HORZGUIDE, 214
+        HORZGUIDE, 236
+        HORZGUIDE, 251
     END
 END
 #endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_FILTER DLGINIT
+BEGIN
+    IDC_CHANNEL, 0x403, 1, 0
+"\000"
+    0
+END
 
 #endif    // English (U.S.) resources
 /////////////////////////////////////////////////////////////////////////////
