@@ -1,5 +1,5 @@
 /*
-    Gradation Filter for VirtualDub -- adjusts the
+    Gradation Filter v1.10 for VirtualDub -- adjusts the
     gradation curve.
     Copyright (C) 2003 Alexander Nagiller
 
@@ -88,6 +88,8 @@ typedef struct MyFilterData {
     int value;
     int channel_mode;
     int process;
+    char filename[1024];
+
 } MyFilterData;
 
 ScriptFunctionDef func_defs[]={
@@ -102,8 +104,8 @@ CScriptObject script_obj={
 struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
-    "gradation curves",            // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.00",
+    "gradation curves",     // name
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.10",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -148,6 +150,8 @@ void GrdDrawTable(HWND hWnd, int table[]);
 void GrdDrawGradTable(HWND hWnd, MyFilterData *mfd);
 void GrdDrawHBorder(HWND hWnd, MyFilterData *mfd);
 void GrdDrawVBorder(HWND hWnd, MyFilterData *mfd);
+void ImportCurve(HWND hWnd, MyFilterData *mfd);
+void ExportCurve(HWND hWnd, MyFilterData *mfd);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -234,31 +238,31 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 b = (old_pixel & 0x0000FF);
                 bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
                     r = r+evaluer[bw];
-                    if (r<65536 && r!=0)
-                    {
-                        r=65536;
-                    }
                     if (r>16711680)
                     {
                         r=16711680;
                     }
-                    g = g+evalueg[bw];
-                    if (g<256 && g!=0)
+                    if (r<65536)
                     {
-                        g=255;
+                        r=0;
                     }
+                    g = g+evalueg[bw];
                     if (g>65280)
                     {
                         g=65280;
                     }
-                    b = b+evalueb[bw];
-                    if (b<0)
+                    if (g<256)
                     {
-                        b=0;
+                        g=0;
                     }
+                    b = b+evalueb[bw];
                     if (b>255)
                     {
                         b=255;
+                    }
+                    if (b<0)
+                    {
+                        b=0;
                     }
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
@@ -279,31 +283,31 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 b = (med_pixel & 0x0000FF);
                 bw = int((54 * (r >> 16) + 183 * (g >> 8) + 19 * b)/256);//bw = int(((r >> 16)+(g >> 8)+b)/3);
                     r = r+evaluer[bw];
-                    if (r<65536 && r!=0)
-                    {
-                        r=65536;
-                    }
                     if (r>16711680)
                     {
                         r=16711680;
                     }
-                    g = g+evalueg[bw];
-                    if (g<256 && g!=0)
+                    if (r<65536)
                     {
-                        g=255;
+                        r=0;
                     }
+                    g = g+evalueg[bw];
                     if (g>65280)
                     {
                         g=65280;
                     }
-                    b = b+evalueb[bw];
-                    if (b<0)
+                    if (g<256)
                     {
-                        b=0;
+                        g=0;
                     }
+                    b = b+evalueb[bw];
                     if (b>255)
                     {
                         b=255;
+                    }
+                    if (b<0)
+                    {
+                        b=0;
                     }
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
@@ -448,7 +452,6 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 char prog[256];
                 char path[256];
                 LPTSTR ptr;
-
                 GetModuleFileName(NULL, prog, 255);
                 GetFullPathName(prog, 255, path, &ptr);
                 *ptr = 0;
@@ -456,6 +459,87 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ShellExecute(hdlg, "open", path, NULL, NULL, SW_SHOWNORMAL);
                 return TRUE;
                 }
+            case IDIMPORT:
+                {
+                OPENFILENAME ofn;
+                mfd->filename[0] = NULL;
+                ofn.lStructSize = sizeof(OPENFILENAME);
+                ofn.hwndOwner = hdlg;
+                ofn.hInstance = NULL;
+                ofn.lpTemplateName = NULL;
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0All Files\0*.*\0\0";
+                ofn.lpstrCustomFilter = NULL;
+                ofn.nMaxCustFilter = 0;
+                ofn.nFilterIndex = 1;
+                ofn.lpstrFile = mfd->filename;
+                ofn.nMaxFile = 1024;
+                ofn.lpstrFileTitle = NULL;
+                ofn.nMaxFileTitle = 0;
+                ofn.lpstrInitialDir = NULL;
+                ofn.lpstrTitle = "Choose Import File";
+                ofn.Flags = OFN_EXPLORER | OFN_CREATEPROMPT | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+                ofn.nFileOffset = 0;
+                ofn.nFileExtension = 0;
+                ofn.lpstrDefExt = NULL;
+                ofn.lCustData = 0;
+                ofn.lpfnHook = NULL;
+                GetOpenFileName(&ofn);
+                if (mfd->filename[0] != 0)
+                {
+                    ImportCurve (hdlg, mfd);
+                    switch(mfd->channel_mode)
+                    {
+                    case 0:
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->value], FALSE);
+                        break;
+                    case 1:
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovaluer[mfd->value], FALSE);
+                        break;
+                    case 2:
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueg[mfd->value], FALSE);
+                        break;
+                    case 3:
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalueb[mfd->value], FALSE);
+                        break;
+                    }
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd);
+                    mfd->ifp->RedoSystem();
+                }
+                break;
+                }
+                return TRUE;
+            case IDEXPORT:
+                {
+                OPENFILENAME ofn;
+                mfd->filename[0] = NULL;
+                ofn.lStructSize = sizeof(OPENFILENAME);
+                ofn.hwndOwner = hdlg;
+                ofn.hInstance = NULL;
+                ofn.lpTemplateName = NULL;
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0All Files\0*.*\0\0";
+                ofn.lpstrCustomFilter = NULL;
+                ofn.nMaxCustFilter = 0;
+                ofn.nFilterIndex = 1;
+                ofn.lpstrFile = mfd->filename;
+                ofn.nMaxFile = 1024;
+                ofn.lpstrFileTitle = NULL;
+                ofn.nMaxFileTitle = 0;
+                ofn.lpstrInitialDir = NULL;
+                ofn.lpstrTitle = "Choose Import File";
+                ofn.Flags = OFN_EXPLORER | OFN_CREATEPROMPT | OFN_OVERWRITEPROMPT;
+                ofn.nFileOffset = 0;
+                ofn.nFileExtension = 0;
+                ofn.lpstrDefExt = ("amp");
+                ofn.lCustData = 0;
+                ofn.lpfnHook = NULL;
+                GetSaveFileName(&ofn);
+                if (mfd->filename[0] != 0)
+                {
+                    ExportCurve (hdlg, mfd);
+                }
+                break;
+                }
+                return TRUE;
             case IDC_RGB:
                 mfd->process = PROCESS_RGB;
                 mfd->ifp->RedoSystem();
@@ -772,7 +856,6 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
     char *tmp;
-    tmp = "";
 
     _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
 
@@ -988,4 +1071,102 @@ void GrdDrawVBorder(HWND hWnd, MyFilterData *mfd)
     }
     ReleaseDC(hWnd, hdc);
     DeleteObject(hPen);
+}
+
+void ImportCurve(HWND hWnd, MyFilterData *mfd)
+{
+    FILE *pFile;
+    int i;
+    int stor[1024];
+    long lSize;
+
+    pFile = fopen (mfd->filename, "rb");
+    if (pFile==NULL)
+    {
+        SendMessage(GetDlgItem(hWnd, IDC_TEST), WM_SETTEXT, 0, (LPARAM)"Error opening file");
+    }
+    else
+    {
+        fseek (pFile , 0 , SEEK_END);
+        lSize = ftell (pFile);
+        rewind (pFile);
+        if (lSize > 768)
+        {
+            for(i=0; (i < 1024) && ( feof(pFile) == 0 ); i++ )
+            {
+                stor[i] = fgetc(pFile);
+            }
+            fclose (pFile);
+            for(i=0; i < 256; i++) {
+                mfd->ovalue[i] = stor[i];
+            }
+            for(i=256; i < 512; i++) {
+                mfd->ovaluer[(i-256)] = stor[i];
+            }
+            for(i=512; i < 768; i++) {
+                mfd->ovalueg[(i-512)] = stor[i];
+            }
+            for(i=768; i < 1024; i++) {
+                mfd->ovalueb[(i-768)] = stor[i];
+            }
+        }
+        if (lSize < 769 && lSize > 256)
+        {
+            for(i=0; (i < 768) && ( feof(pFile) == 0 ); i++ )
+            {
+                stor[i] = fgetc(pFile);
+            }
+            fclose (pFile);
+            for(i=0; i < 256; i++) {
+                mfd->ovaluer[i] = stor[i];
+            }
+            for(i=256; i < 512; i++) {
+                mfd->ovalueg[(i-256)] = stor[i];
+            }
+            for(i=512; i < 768; i++) {
+                mfd->ovalueb[(i-512)] = stor[i];
+            }
+        }
+        if (lSize < 257)
+        {
+            for(i=0; (i < 256) && ( feof(pFile) == 0 ); i++ )
+            {
+                stor[i] = fgetc(pFile);
+            }
+            fclose (pFile);
+            for(i=0; i < 256; i++) {
+                mfd->ovalue[i] = stor[i];
+            }
+        }
+    }
+}
+void ExportCurve(HWND hWnd, MyFilterData *mfd)
+{
+char str [80];
+    FILE *pFile;
+    int i;
+    char c;
+
+    pFile = fopen (mfd->filename,"wb");
+    for (i=0; i<256; i++) {
+        c = char (mfd->ovalue[i]);
+        fprintf (pFile, "%c",c);
+    }
+    for (i=0; i<256; i++) {
+        c = char (mfd->ovaluer[i]);
+        fprintf (pFile, "%c",c);
+    }
+    for (i=0; i<256; i++) {
+        c = char (mfd->ovalueg[i]);
+        fprintf (pFile, "%c",c);
+    }
+    for (i=0; i<256; i++) {
+        c = char (mfd->ovalueb[i]);
+        fprintf (pFile, "%c",c);
+    }
+    for (i=0; i<256; i++) {
+        c = char (i);
+        fprintf (pFile, "%c",c);
+    }
+    fclose (pFile);
 }
