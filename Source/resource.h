@@ -15,14 +15,18 @@
 #define IDC_OUTPUTVALUE                 1011
 #define IDC_RESET                       1012
 #define IDC_INVERT                      1013
+#define IDC_GRADCURVE                   1014
+#define IDC_HBORDER                     1016
+#define IDC_VBORDER                     1017
+#define IDC_CHANNEL                     1018
 
 // Next default values for new objects
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        102
+#define _APS_NEXT_RESOURCE_VALUE        103
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1013
+#define _APS_NEXT_CONTROL_VALUE         1019
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
