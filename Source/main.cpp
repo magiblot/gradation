@@ -1,7 +1,7 @@
 /*
-    Gradation Filter v1.24.2 for VirtualDub -- adjusts the
+    Gradation Filter v1.25 for VirtualDub -- adjusts the
     gradation curve.
-    Copyright (C) 2005 Alexander Nagiller
+    Copyright (C) 2007 Alexander Nagiller
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -205,7 +205,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.24.2",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.25",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -611,16 +611,13 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
 
 BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     MyFilterData *mfd = (MyFilterData *)GetWindowLong(hdlg, DWL_USER);
-    int i;
     int r;
     signed int inv[256];
     int cx;
     int cy;
     int ax;
     int ay;
-    int inc;
     signed int delta[256];
-    signed int line[256];
     int a;
     signed int b;
 
@@ -871,7 +868,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0All Files\0*.*\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -1803,6 +1800,31 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
             }
         }
     }
+    else if (mfd->filter == 5)
+    {
+        pFile = fopen (mfd->filename, "rb");
+        if (pFile==NULL)
+        {
+            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
+        }
+        else
+        {
+            fseek (pFile , 0 , SEEK_END);
+            lSize = ftell (pFile);
+            rewind (pFile);
+            for(i=0; (i < 768) && ( feof(pFile) == 0 ); i++ )
+            {
+                if (i<256)
+                {stor[i+512] = fgetc(pFile);}
+                if (i>255 && i <512)
+                {stor[i] = fgetc(pFile);}
+                if (i>511)
+                {stor[i-512] = fgetc(pFile);}
+            }
+            fclose (pFile);
+            lSize = 768;
+        }
+    }
     else
     {
         pFile = fopen (mfd->filename, "rb");
@@ -1862,7 +1884,6 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
 }
 void ExportCurve(HWND hWnd, MyFilterData *mfd)
 {
-    char str [80];
     FILE *pFile;
     int i;
     int j;
