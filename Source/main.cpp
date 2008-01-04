@@ -1,5 +1,5 @@
 /*
-    Gradation Filter v1.25 for VirtualDub -- adjusts the
+    Gradation Filter v1.26 Beta for VirtualDub -- adjusts the
     gradation curve.
     Copyright (C) 2007 Alexander Nagiller
 
@@ -21,6 +21,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "ScriptInterpreter.h"
 #include "ScriptError.h"
@@ -91,6 +92,7 @@ enum {
     SPACE_YUV               = 1,
     SPACE_CMYK              = 2,
     SPACE_HSV               = 3,
+    SPACE_LAB               = 4,
 };
 
 static char *space_names[]={
@@ -98,6 +100,7 @@ static char *space_names[]={
     "YUV",
     "CMYK",
     "HSV",
+    "CIELab",
 };
 
 enum {
@@ -149,6 +152,18 @@ static char *HSVchannel_names[]={
 };
 
 enum {
+    CHANNEL_L               = 1,
+    CHANNEL_A               = 2,
+    CHANNEL_B               = 3,
+};
+static char *LABchannel_names[]={
+    "Luminance",
+    "a Red-Green",
+    "b Yellow-Blue",
+};
+
+
+enum {
     PROCESS_RGB     = 0,
     PROCESS_FULL    = 1,
     PROCESS_RGBW    = 2,
@@ -157,6 +172,7 @@ enum {
     PROCESS_YUV     = 5,
     PROCESS_CMYK    = 6,
     PROCESS_HSV     = 7,
+    PROCESS_LAB     = 8,
 
 };
 
@@ -169,6 +185,7 @@ static char *process_names[]={
     "Y/U/V",
     "C/M/Y/K",
     "H/S/V",
+    "L/a/b",
 };
 
 typedef struct MyFilterData {
@@ -205,7 +222,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.25",
+    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.26b",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -519,9 +536,9 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                     y = (cdelta*255)/z;
                     cdelta = (cdelta*6);
                     if(r==z) {x = ((g-b)<<16)/cdelta;}
-                    else if(g==z) {x = 21845+(((b-r)<<16)/cdelta);}
+                    else if(g==z) {x = 21844+(((b-r)<<16)/cdelta);}
                     else {x = 43691+(((r-g)<<16)/cdelta);}
-                    if( x < 0 ) {x = x + 65535;}
+                    if( x < 0 ) {x = x + 65449;}
                     if ((x&0xFF)>127) x=x+128;
                     x=x>>8;
                 }
@@ -547,13 +564,13 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                     ch=(x*6-(chi<<8));
                     rd=(z*(255-y));
                     if ((rd&0x00FF)>127) rd=rd+128;
-                    rd = (rd&0xFF00)>>8;
+                    rd = rd>>8;//rd = (rd&0xFF00)>>8;
                     gd = (z*(255-((y*ch)>>8)));
                     if ((gd&0x00FF)>127) gd=gd+128;
-                    gd = (gd&0xFF00)>>8;
+                    gd=gd>>8;//gd = (gd&0xFF00)>>8;
                     bd = (z*(255-(y*(256-ch)>>8)));
                     if ((bd&0x00FF)>127) bd=bd+128;
-                    bd = (bd&0xFF00)>>8;
+                    bd=bd>>8;//bd = (bd&0xFF00)>>8;
                     if (chi==0)      {r=z; g=bd; b=rd;}
                     else if (chi==1) {r=gd; g=z; b=rd;}
                     else if (chi==2) {r=rd; g=z; b=bd;}
@@ -561,6 +578,71 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                     else if (chi==4) {r=bd; g=rd; b=z;}
                     else             {r=z; g=rd; b=gd;}
                 }
+                new_pixel = ((r<<16)+(g<<8)+b);
+                *dst++ = new_pixel;
+            }
+            src = (Pixel32 *)((char *)src + fa->src.modulo);
+            dst = (Pixel32 *)((char *)dst + fa->dst.modulo);
+        }
+    break;
+    case 8: //LAB
+        for (h = 0; h < height; h++)
+        {
+            for (w = 0; w < width; w++)
+            {
+                old_pixel = *src++;
+                r = ((old_pixel & 0xFF0000)>>16);
+                g = ((old_pixel & 0x00FF00)>>8);
+                b = (old_pixel & 0x0000FF);
+                if (r > 10) {rr=pow(((r<<4)+228),(2.4));}
+                else {rr=(r<<4)*9987.749;}
+                if (g > 10) {gg=pow(((g<<4)+228),(2.4));}
+                else {gg=(g<<4)*9987.749;}
+                if (b > 10) {bb=pow(((b<<4)+228),(2.4));}
+                else {bb=(b<<4)*9987.749;}
+                x = rr/127657.5086 + gg/147237.4506 + bb/291742.5101;
+                y = rr/247578.3441 + gg/73618.72529 + bb/729356.2752;
+                z = rr/2723356.663 + gg/441712.3517 + bb/55394.13195;
+                //XYZ to Lab
+                if (x>89){rr=pow((x),(0.33333333333333333333333333333333))*472.13;}
+                else {rr=7.787*x+1379.3103448275862068965517241379;}
+                if (y>89){gg=pow((y),(0.33333333333333333333333333333333))*464.20;}
+                else {gg=7.787*y+1379.3103448275862068965517241379;}
+                if (z>89){bb=pow((z),(0.33333333333333333333333333333333))*451.19;}
+                else {bb=7.787*z+1379.3103448275862068965517241379;}
+                x = gg/33.806620-40.1;
+                y = (rr-gg)/14.43137+119;
+                z = (gg-bb)/39.41176+136;
+                // Applying the curves
+                x = mfd->ovalue[1][x];
+                y = mfd->ovalue[2][y];
+                z = mfd->ovalue[3][z];
+                //Lab to XYZ
+                gg=x*3.380+139;
+                rr=y*1.445-171+gg;
+                bb=gg-(z*3.941-534);
+                if (rr>206) {r=(rr*rr*rr)/105111.10;}
+                else {r=rr*1.220580-168.3558;}
+                if (gg>206) {g=(gg*gg*gg)/100000.00;}
+                else {g=gg*1.284185-177.1290;}
+                if (bb>206) {b=(bb*bb*bb)/91841.70;}
+                else {b=bb*1.398260-192.8634;}
+                //XYZ to RGB
+                rr = r*3240.71 + g*-1537.26 + b*-498.571;
+                gg = r*-969.258 + g*1875.99 + b*41.5557;
+                bb = r*55.6352 + g*-203.996 + b*1057.07;
+                if (rr>31308) {r=(pow((rr),(0.41666666666666666666666666666667)))/3.06813-13.9;}
+                else {r=rr/3035.06;}
+                if (gg>31308) {g=(pow((gg),(0.41666666666666666666666666666667)))/3.06813-13.9;}
+                else {g=gg/3035.06;}
+                if (bb>31308) {b=(pow((bb),(0.41666666666666666666666666666667)))/3.06813-13.9;}
+                else {b=bb/3035.06;}
+                if (r<0) {r=0;}
+                if (g<0) {g=0;}
+                if (b<0) {b=0;}
+                if (r>255) {r=255;}
+                if (g>255) {g=255;}
+                if (b>255) {b=255;}
                 new_pixel = ((r<<16)+(g<<8)+b);
                 *dst++ = new_pixel;
             }
@@ -634,7 +716,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
             hWnd = GetDlgItem(hdlg, IDC_SPACE);
-            for(i=0; i<4; i++)
+            for(i=0; i<5; i++)
             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)space_names[i]);}
             if (mfd->process > 4) mfd->space_mode = mfd->process - 4;
             SendMessage(hWnd, CB_SETCURSEL, mfd->space_mode, 0);
@@ -687,6 +769,14 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"H/S/V");
                 break;
+                case 4:
+                    for(i=0; i<3; i++)
+                    {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
+                    mfd->channel_mode = 0;
+                    mfd->offset = 1;
+                    hWnd = GetDlgItem(hdlg, IDC_RGB);
+                    SetWindowText (hWnd,"L/a/b");
+                break;
             }
             if (mfd->space_mode != 0) {
                 hWnd = GetDlgItem(hdlg, IDC_FULL);
@@ -717,6 +807,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case PROCESS_YUV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 1; break;
                 case PROCESS_CMYK: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 2; break;
                 case PROCESS_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 3; break;
+                case PROCESS_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 4; break;
             }
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
 
@@ -947,6 +1038,10 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->process = PROCESS_HSV;
                     mfd->ifp->RedoSystem();
                     break;
+                    case 4:
+                    mfd->process = PROCESS_LAB;
+                    mfd->ifp->RedoSystem();
+                    break;
                 }
             break;
             case IDC_FULL:
@@ -964,6 +1059,10 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->ifp->RedoSystem();
                     break;
                     case 3:
+                    mfd->process = PROCESS_OFF;
+                    mfd->ifp->RedoSystem();
+                    break;
+                    case 4:
                     mfd->process = PROCESS_OFF;
                     mfd->ifp->RedoSystem();
                     break;
@@ -1164,6 +1263,15 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         hWnd = GetDlgItem(hdlg, IDC_RGB);
                         SetWindowText (hWnd,"H/S/V");
                         if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_HSV;
+                        break;
+                    case 4:
+                        for(i=0; i<3; i++)
+                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
+                        mfd->channel_mode = 0;
+                        mfd->offset = 1;
+                        hWnd = GetDlgItem(hdlg, IDC_RGB);
+                        SetWindowText (hWnd,"L/a/b");
+                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
                         break;
                     }
                     if (mfd->space_mode != 0) {
