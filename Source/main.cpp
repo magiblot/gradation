@@ -1,7 +1,7 @@
 /*
-    Gradation Filter v1.30 Beta for VirtualDub -- adjusts the
-    gradation curve.
-    Copyright (C) 2007 Alexander Nagiller
+    Gradation Filter v1.35 for VirtualDub -- a wide range of color
+    manipulation through gradation curves.
+    Copyright (C) 2008 Alexander Nagiller
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -44,6 +44,9 @@ void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int
 bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buflen);
 
 ///////////////////////////////////////////////////////////////////////////
+long *rgblab; //LUT Lab
+long *labrgb; //LUT Lab
+
 static LRESULT CALLBACK FiWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 HINSTANCE g_hInst;
@@ -206,7 +209,8 @@ typedef struct MyFilterData {
     int offset;
     char filename[1024];
     int filter;
-
+    bool Labprecalc;
+    int laboff;
 } MyFilterData;
 
 ScriptFunctionDef func_defs[]={
@@ -222,7 +226,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjusts the gradation curves. The curves can be used for coring and invert as well. Version 1.30beta",
+    "Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger. Version 1.35",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -266,9 +270,8 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 ///////////////////////////////////////////////////////////////////////////
 
-void GrdDrawGradTable(HWND hWnd, int table[]);
-void GrdDrawHBorder(HWND hWnd, MyFilterData *mfd);
-void GrdDrawVBorder(HWND hWnd, MyFilterData *mfd);
+void GrdDrawGradTable(HWND hWnd, int table[], int laboff);
+void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 void ImportCurve(HWND hWnd, MyFilterData *mfd);
 void ExportCurve(HWND hWnd, MyFilterData *mfd);
 
@@ -286,12 +289,12 @@ int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     mfd->cvalueb = new Pixel32[256];
 
     for (i=0; i<256; i++) {
-        mfd->cvaluer[i] = (mfd->ovalue[1][i] - i)<<16;
-        mfd->cvalueg[i] = (mfd->ovalue[2][i] - i)<<8;
-        mfd->cvalueb[i] = (mfd->ovalue[3][i] - i);
         mfd->evaluer[i] = (mfd->ovalue[0][i] - i)<<16;
         mfd->evalueg[i] = (mfd->ovalue[0][i] - i)<<8;
         mfd->evalueb[i] = (mfd->ovalue[0][i] - i);
+        mfd->cvaluer[i] = (mfd->ovalue[1][i] - i)<<16;
+        mfd->cvalueg[i] = (mfd->ovalue[2][i] - i)<<8;
+        mfd->cvalueb[i] = (mfd->ovalue[3][i] - i);
     }
     return 0;
 }
@@ -308,18 +311,18 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
     const Pixel32 *cvaluer = mfd->cvaluer;
     const Pixel32 *cvalueg = mfd->cvalueg;
     const Pixel32 *cvalueb = mfd->cvalueb;
+
     long r;
     int g;
     int b;
     int bw;
     int cmin;
     int cdelta;
-    int rd;
-    int gd;
-    int bd;
+    int cdeltah;
     int ch;
     int chi;
     int div;
+    int divh;
     int v;
     long x;
     long y;
@@ -327,9 +330,7 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
     long rr;
     long gg;
     long bb;
-    long r1;
-    long g1;
-    long b1;
+    long lab;
 
     src = (Pixel32 *)fa->src.data;
     dst = (Pixel32 *)fa->dst.data;
@@ -434,29 +435,20 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 g = ((old_pixel & 0x00FF00)>>8);
                 b = (old_pixel & 0x0000FF);
                 //RGB to YUV (x=Y y=U z=V)
-                x = (19595 * r + 38470 * g + 7471 * b);
-                x=(x+32768)>>16;
-                y = (8388607 - 11058 * r - 21710 * g + 32768 * b);
-                y=(y+32768)>>16;
-                z = (8388607 + 32768 * r - 27439 * g - 5329 * b);
-                z=(z+32768)>>16;
+                x = (32768 + 19595 * r + 38470 * g + 7471 * b)>>16; //correct rounding +32768
+                y = (8421375 - 11058 * r - 21710 * g + 32768 * b)>>16; //correct rounding +32768
+                z = (8421375 + 32768 * r - 27439 * g - 5329 * b)>>16; //correct rounding +32768
                 // Applying the curves
                 x = (mfd->ovalue[1][x])<<16;
                 y = (mfd->ovalue[2][y])-128;
                 z = (mfd->ovalue[3][z])-128;
                 // YUV to RGB
-                rr = (x + 91881 * z);
-                if (rr<0) rr=0; else if (rr>16744447) rr=16744447;
-                if ((rr & 0x00FFFF)>32767) rr=rr+32768;
-                r = (rr & 0xFF0000);
-                gg = (x - 22553 * y - 46802 * z);
-                if (gg<0) gg=0; else if (gg>16744447) gg=16744447;
-                if ((gg & 0x00FFFF)>32767) gg=gg+32768;
-                g = (gg & 0xFF0000)>>8;
-                bb = (x + 116130 * y);
-                if (bb<0) bb=0; else if (bb>16744447) bb=16744447;
-                if ((bb & 0x00FFFF)>32767) bb=bb+32768;
-                b = (bb & 0xFF0000)>>16;
+                rr = (32768 + x + 91881 * z); //correct rounding +32768
+                if (rr<0) {r=0;} else if (rr>16711680) {r=16711680;} else {r = (rr & 0xFF0000);}
+                gg = (32768 + x - 22553 * y - 46802 * z); //correct rounding +32768
+                if (gg<0) {g=0;} else if (gg>16711680) {g=65280;} else {g = (gg & 0xFF0000)>>8;}
+                bb = (32768 + x + 116130 * y); //correct rounding +32768
+                if (bb<0) {b=0;} else if (bb>16711680) {b=255;} else {b = bb>>16;}
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
             }
@@ -470,27 +462,41 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                rr = (255-((old_pixel & 0xFF0000)>>16));
-                gg = (255-((old_pixel & 0x00FF00)>>8));
-                bb = (255-(old_pixel & 0x0000FF));
-                v=rr;
-                if (gg<v) v=gg;
-                if (bb<v) v=bb;
-                div=(256-v);
-                x=(((rr-v)<<8)+(div>>1))/div; //correct rounding xx+(div>>1)
-                y=(((gg-v)<<8)+(div>>1))/div; //correct rounding yy+(div>>1)
-                z=(((bb-v)<<8)+(div>>1))/div; //correct rounding zz+(div>>1)
+                r = ((old_pixel & 0xFF0000)>>16);
+                g = ((old_pixel & 0x00FF00)>>8);
+                b = (old_pixel & 0x0000FF);
+                if(r>=g && r>=b) { /* r is Maximum */
+                    v = 255-r;
+                    div  = r+1;
+                    divh = div>>1;
+                    x = 0;
+                    y = (((r-g)<<8) + divh)/div;  //correct rounding  yy+(div>>1)
+                    z = (((r-b)<<8) + divh)/div;} //correct rounding  zz+(div>>1)
+                else if(g>=b) {/* g is maximum */
+                    v = 255-g;
+                    div  = g+1;
+                    divh = div>>1;
+                    x = (((g-r)<<8) + divh)/div;  //correct rounding  xx+(div>>1)
+                    y = 0;
+                    z = (((g-b)<<8) + divh)/div;} //correct rounding  zz+(div>>1)
+                else {/* b is maximum */
+                    v = 255-b;
+                    div  = b+1;
+                    divh = div>>1;
+                    x = (((b-r)<<8) + divh)/div; //correct rounding  xx+(div>>1)
+                    y = (((b-g)<<8) + divh)/div; //correct rounding  yy+(div>>1)
+                    z = 0;}
                 // Applying the curves
                 x = mfd->ovalue[1][x];
                 y = mfd->ovalue[2][y];
                 z = mfd->ovalue[3][z];
                 v = mfd->ovalue[4][v];
                 // CMYK to RGB
-                r = 255-((((x*(256-v))+128)>>8) + v); //correct rounding rr+128;
+                r = 255-((((x*(256-v))+128)>>8)+v); //correct rounding rr+128;
                 if (r<0) r=0;
-                g = 255-((((y*(256-v))+128)>>8) + v); //correct rounding gg+128;
+                g = 255-((((y*(256-v))+128)>>8)+v); //correct rounding gg+128;
                 if (g<0) g=0;
-                b = 255-((((z*(256-v))+128)>>8) + v); //correct rounding bb+128;
+                b = 255-((((z*(256-v))+128)>>8)+v); //correct rounding bb+128;
                 if (b<0) b=0;
                 new_pixel = ((r<<16)+(g<<8)+b);
                 *dst++ = new_pixel;
@@ -517,11 +523,12 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 if( cdelta != 0 )
                 {   y = (cdelta*255)/z;
                     cdelta = (cdelta*6);
-                    if(r==z) {x = ((g-b)<<16)/cdelta;}
-                    else if(g==z) {x = 21844+(((b-r)<<16)/cdelta);}
-                    else {x = 43691+(((r-g)<<16)/cdelta);}
-                    if( x < 0 ) {x = x + 65449;}
-                    x=(x+128)>>8;
+                    cdeltah = cdelta>>1;
+                    if(r==z) {x = (((g-b)<<16)+cdeltah)/cdelta;}
+                    else if(g==z) {x = 21845+((((b-r)<<16)+cdeltah)/cdelta);}
+                    else {x = 43689+((((r-g)<<16)+cdeltah)/cdelta);}
+                    if(x<0) {x=(x+65577)>>8;}
+                    else {x=(x+128)>>8;}
                 }
                 else
                 {   y = 0;
@@ -533,25 +540,47 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 z = mfd->ovalue[3][z];
                 // HSV to RGB
                 if (y==0)
-                {   r = z;
+                {
+                    r = z;
                     g = z;
                     b = z;
                 }
                 else
-                {   chi=((x*6)&0xFF00)>>8;
-                    ch=(x*6-(chi<<8));
-                    rd=(z*(255-y));
-                    rd = (rd+128)>>8;
-                    gd = (z*(255-((y*ch)>>8)));
-                    gd = (gd+128)>>8;
-                    bd = (z*(255-(y*(256-ch)>>8)));
-                    bd = (bd+128)>>8;
-                    if (chi==0)      {r=z; g=bd; b=rd;}
-                    else if (chi==1) {r=gd; g=z; b=rd;}
-                    else if (chi==2) {r=rd; g=z; b=bd;}
-                    else if (chi==3) {r=rd; g=gd; b=z;}
-                    else if (chi==4) {r=bd; g=rd; b=z;}
-                    else             {r=z; g=rd; b=gd;}
+                {   chi = ((x*6)&0xFF00);
+                    ch  = (x*6-chi);;
+                    switch(chi)
+                    {
+                    case 0:
+                        r = z;
+                        g = (z*(65263-(y*(256-ch)))+65531)>>16;
+                        b = (z*(255-y)+94)>>8;
+                        break;
+                    case 256:
+                        r = (z*(65263-y*ch)+65528)>>16;
+                        g = z;
+                        b = (z*(255-y)+89)>>8;
+                        break;
+                    case 512:
+                        r = (z*(255-y)+89)>>8;
+                        g = z;
+                        b = (z*(65267-(y*(256-ch)))+65529)>>16;
+                        break;
+                    case 768:
+                        r = (z*(255-y)+89)>>8;
+                        g = (z*(65267-y*ch)+65529)>>16;
+                        b = z;
+                        break;
+                    case 1024:
+                        r = (z*(65263-(y*(256-ch)))+65528)>>16;
+                        g = (z*(255-y)+89)>>8;
+                        b = z;
+                        break;
+                    default:
+                        r = z;
+                        g = (z*(255-y)+89)>>8;
+                        b = (z*(65309-y*(ch+1))+27)>>16;
+                        break;
+                    }
                 }
                 new_pixel = ((r<<16)+(g<<8)+b);
                 *dst++ = new_pixel;
@@ -566,59 +595,16 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                r = ((old_pixel & 0xFF0000)>>16);
-                g = ((old_pixel & 0x00FF00)>>8);
-                b = (old_pixel & 0x0000FF);
-                if (r > 10) {rr=pow(((r<<4)+224.4),(2.4));}
-                else {rr=(r<<4)*9987.749;}
-                if (g > 10) {gg=pow(((g<<4)+224.4),(2.4));}
-                else {gg=(g<<4)*9987.749;}
-                if (b > 10) {bb=pow(((b<<4)+224.4),(2.4));}
-                else {bb=(b<<4)*9987.749;}
-                x = (rr+6.38287543)/12.76575086 + (gg+7.36187253)/14.72374506 + (bb+14.587125505)/29.17425101;
-                y = (rr+12.378917205)/24.75783441 + (gg+3.6809362645)/7.361872529 + (bb+36.46781376)/72.93562752;
-                z = (rr+136.16783315)/272.3356663 + (gg+22.085617585)/44.17123517 + (bb+2.7697065975)/5.539413195;
-                //XYZ to Lab
-                if (x>841776){rr=pow((x),(0.33333333333333333333333333333333))*21.9122841;}
-                else {rr=(x+610.28989295)/1220.5797859+1379.3103448275862068965517241379;}
-                if (y>885644){gg=pow((y),(0.33333333333333333333333333333333))*21.5443497;}
-                else {gg=(y+642.0927467)/1284.1854934+1379.3103448275862068965517241379;}
-                if (z>964440){bb=pow((z),(0.33333333333333333333333333333333))*20.9408725;}
-                else {bb=(z+699.1298454)/1398.2596908+1379.3103448275862068965517241379;}
-                x=((gg+16.90331)/33.806620)-40.8;
-                y=((rr-gg+7.23208898)/14.46417796)+119.167434;
-                z=((gg-bb+19.837527645)/39.67505529)+135.936123;
+                lab = rgblab[(old_pixel & 0xFFFFFF)];
+                rr = (lab & 0xFF0000)>>16;
+                gg = (lab & 0x00FF00)>>8;
+                bb = (lab & 0x0000FF);
                 // Applying the curves
-                x = mfd->ovalue[1][x];
-                y = mfd->ovalue[2][y];
-                z = mfd->ovalue[3][z];
+                x = mfd->ovalue[1][rr];
+                y = mfd->ovalue[2][gg];
+                z = mfd->ovalue[3][bb];
                 //Lab to XYZ
-                gg=x*50+2040;
-                if (x>20) {g1=gg*gg/32352.25239*gg;}
-                else {g1=x*43413.9788;}
-                rr=y*21.392519204-2549.29163142+gg;
-                bb=gg-z*58.67940678+7976.6510628;
-                if (rr>3060) {r1=rr*rr/34038.16258*rr;}
-                else {r1=rr*825.27369-1683558;}
-                if (bb>3060) {b1=bb*bb/29712.85911*bb;}
-                else {b1=bb*945.40885-1928634;}
-                //XYZ to RGB
-                rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                else {r=(rr+75881.7458872)/151763.4917744;}
-                if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                else {g=(gg+75881.7458872)/151763.4917744;}
-                if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                else {b=(bb+75881.7458872)/151763.4917744;}
-                if (r<0) {r=0;}
-                if (g<0) {g=0;}
-                if (b<0) {b=0;}
-                if (r>255) {r=255;}
-                if (g>255) {g=255;}
-                if (b>255) {b=255;}
-                new_pixel = ((r<<16)+(g<<8)+b);
+                new_pixel = labrgb[((x<<16)+(y<<8)+z)];
                 *dst++ = new_pixel;
             }
             src = (Pixel32 *)((char *)src + fa->src.modulo);
@@ -650,6 +636,7 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
 
+    mfd->Labprecalc = 0;
     mfd->value = 0;
     mfd->process = 0;
     mfd->xl = 300;
@@ -702,6 +689,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)RGBchannel_names[i]);}
                     mfd->channel_mode = 0;
                     mfd->offset = 0;
+                    mfd->laboff = 0;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"RGB only");
                     hWnd = GetDlgItem(hdlg, IDC_FULL);
@@ -794,9 +782,8 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                 BeginPaint(hdlg, &ps);
                 EndPaint(hdlg, &ps);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
-                GrdDrawHBorder(GetDlgItem(hdlg, IDC_HBORDER), mfd);
-                GrdDrawVBorder(GetDlgItem(hdlg, IDC_VBORDER), mfd);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
             }
             return TRUE;
 
@@ -881,7 +868,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             {
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
             }
-            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
             mfd->ifp->RedoSystem();
             break;
 
@@ -905,7 +892,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case WM_COMMAND:
             switch(LOWORD(wParam)) {
-            case IDPREVIEW:
+            case IDPREVIEW: // open preview
                 mfd->ifp->Toggle(hdlg);
                 break;
             case IDCANCEL:
@@ -914,7 +901,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             case IDOK:
                 EndDialog(hdlg, 0);
                 return TRUE;
-            case IDHELP:
+            case IDHELP: // open helpfile
                 {
                 char prog[256];
                 char path[256];
@@ -926,7 +913,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ShellExecute(hdlg, "open", path, NULL, NULL, SW_SHOWNORMAL);
                 return TRUE;
                 }
-            case IDIMPORT:
+            case IDIMPORT: // import curves
                 {
                 OPENFILENAME ofn;
                 mfd->filename[0] = NULL;
@@ -956,13 +943,13 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 {
                     ImportCurve (hdlg, mfd);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                     mfd->ifp->RedoSystem();
                 }
                 break;
                 }
                 return TRUE;
-            case IDEXPORT:
+            case IDEXPORT: // export curves
                 {
                 OPENFILENAME ofn;
                 mfd->filename[0] = NULL;
@@ -1079,7 +1066,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->ovalue[mfd->channel_mode][mfd->value]++;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_OUTPUTMINUS:
@@ -1088,19 +1075,19 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->ovalue[mfd->channel_mode][mfd->value]--;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                 mfd->ifp->RedoSystem();
                 break;
-            case IDC_RESET:
+            case IDC_RESET: // reset the curve
                 for (i=0; i<256; i++)
                 {
                     mfd->ovalue[mfd->channel_mode][i] = i;
                 }
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                 mfd->ifp->RedoSystem();
                 break;
-            case IDC_SMOOTH:
+            case IDC_SMOOTH:  // smooth the curve
                 if (mfd->ovalue[mfd->channel_mode][0]<=mfd->ovalue[mfd->channel_mode][255])
                 {
                     a = mfd->ovalue[mfd->channel_mode][0];
@@ -1164,7 +1151,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;
                 }
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_INVERT:
@@ -1179,7 +1166,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->ovalue[mfd->channel_mode][i] = inv[i];
                 }
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_SPACE:
@@ -1187,6 +1174,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->space_mode = SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0);
                     hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
                     SendMessage(hWnd, CB_RESETCONTENT, 0, 0);
+                    mfd->laboff = 0;
                     switch (mfd->space_mode){
                     case 0:
                         for(i=0; i<4; i++)
@@ -1247,6 +1235,85 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         hWnd = GetDlgItem(hdlg, IDC_RGB);
                         SetWindowText (hWnd,"L/a/b");
                         if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
+                        if (mfd->Labprecalc==0) {   // build up the LUT for the Lab process
+                            long count;
+                            long x;
+                            long y;
+                            long z;
+                            long rr;
+                            long gg;
+                            long bb;
+                            long r1;
+                            long g1;
+                            long b1;
+                            int r;
+                            int g;
+                            int b;
+
+                            rgblab = new long[16777216];
+                            labrgb = new long[16777216];
+
+                            count=0;
+                            for (r=0; r<256; r++) {
+                                        for (g=0; g<256; g++) {
+                                            for (b=0; b<256; b++) {
+                                                if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
+                                                else {rr=long((r<<4)*9987.749);}
+                                                if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
+                                                else {gg=long((g<<4)*9987.749);}
+                                                if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
+                                                else {bb=long((b<<4)*9987.749);}
+                                                x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
+                                                y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
+                                                z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
+                                                //XYZ to Lab
+                                                if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
+                                                else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
+                                                if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
+                                                else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
+                                                if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
+                                                else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
+                                                x=long(((gg+16.90331)/33.806620)-40.8);
+                                                y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
+                                                z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
+                                                rgblab[count]=((x<<16)+(y<<8)+z);
+                                                count++;
+                                            }
+                                        }
+                                    }
+                            count = 0;
+                            for (x=0; x<256; x++) {
+                                        for (y=0; y<256; y++) {
+                                            for (z=0; z<256; z++) {
+                                                gg=x*50+2040;
+                                                rr=long(y*21.392519204-2549.29163142+gg);
+                                                bb=long(gg-z*58.67940678+7976.6510628);
+                                                if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
+                                                else {g1=long(x*43413.9788);}
+                                                if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
+                                                else {r1=long(rr*825.27369-1683558);}
+                                                if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
+                                                else {b1=long(bb*945.40885-1928634);}
+                                                //XYZ to RGB
+                                                rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
+                                                gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
+                                                bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
+                                                if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
+                                                else {r=int((rr+75881.7458872)/151763.4917744);}
+                                                if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
+                                                else {g=int((gg+75881.7458872)/151763.4917744);}
+                                                if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
+                                                else {b=int((bb+75881.7458872)/151763.4917744);}
+                                                if (r<0) {r=0;} else if (r>255) {r=255;}
+                                                if (g<0) {g=0;} else if (g>255) {g=255;}
+                                                if (b<0) {b=0;} else if (b>255) {b=255;}
+                                                labrgb[count]=((r<<16)+(g<<8)+b);
+                                                count++;
+                                            }
+                                        }
+                                    }
+                        }
+                        mfd->Labprecalc = 1;
                         break;
                     }
                     if (mfd->space_mode != 0) {
@@ -1273,19 +1340,23 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
                     mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
-                    GrdDrawHBorder(GetDlgItem(hdlg, IDC_HBORDER), mfd);
-                    GrdDrawVBorder(GetDlgItem(hdlg, IDC_VBORDER), mfd);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                    GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                     mfd->ifp->RedoSystem();
                 }
                 return TRUE;
             case IDC_CHANNEL:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
                     mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+                    if (mfd->space_mode == 4) {
+                        if (mfd->channel_mode == 2) {mfd->laboff = -9;}
+                        else if (mfd->channel_mode == 3) {mfd->laboff = 8;}
+                        else {mfd->laboff = 0;}
+                    }
+                    else {mfd->laboff = 0;}
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)]);
-                    GrdDrawHBorder(GetDlgItem(hdlg, IDC_HBORDER), mfd);
-                    GrdDrawVBorder(GetDlgItem(hdlg, IDC_VBORDER), mfd);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                    GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                     mfd->ifp->RedoSystem();
                 }
                 return TRUE;
@@ -1319,7 +1390,6 @@ void StringProc(const FilterActivation *fa, const FilterFunctions *ff, char *str
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
 
     sprintf(str, " (mode: %s)",process_names[mfd->process]);
-
 }
 
 void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int argc) {
@@ -1360,7 +1430,7 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     return true;
 }
 
-void GrdDrawGradTable(HWND hWnd, int table[])
+void GrdDrawGradTable(HWND hWnd, int table[], int loff) // draw the curve
 {
     RECT rect;
 
@@ -1383,16 +1453,16 @@ void GrdDrawGradTable(HWND hWnd, int table[])
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left + (int)(scaleX * i), rect.top, NULL);
-        LineTo(hdc, rect.left + (int)(scaleX * i), rect.bottom - 1);
+        MoveToEx(hdc, rect.left + (int)(scaleX * i)+loff, rect.top, NULL);
+        LineTo(hdc, rect.left + (int)(scaleX * i)+loff, rect.bottom - 1);
     }
 
     DeleteObject(SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(0, 0, 0))));
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left, rect.bottom - (int)(scaleY * i) - 1, NULL);
-        LineTo(hdc, rect.right, rect.bottom - (int)(scaleY * i) - 1);
+        MoveToEx(hdc, rect.left, rect.bottom - (int)(scaleY * i)-loff - 1, NULL);
+        LineTo(hdc, rect.right, rect.bottom - (int)(scaleY * i)-loff - 1);
     }
 
     DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 0))));
@@ -1413,499 +1483,237 @@ void GrdDrawGradTable(HWND hWnd, int table[])
     DeleteObject(hPen);
 }
 
-void GrdDrawHBorder(HWND hWnd, MyFilterData *mfd)
+void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two color borders
 {
     RECT rect;
-
-    InvalidateRect(hWnd, NULL, TRUE);
-    UpdateWindow(hWnd);
-    GetClientRect(hWnd, &rect);
     double scaleX;
-    int Y;
-    int i;
-    int j;
-    int r;
-    int g;
-    int b;
-    int rd;
-    int gd;
-    int bd;
-    int ch;
-    int chi;
-    int dif;
-    long r1;
-    long g1;
-    long b1;
-    long rr;
-    long gg;
-    long bb;
-    HDC hdc;
-    HPEN hPen;
-
-    hdc = GetDC(hWnd);
-
-    scaleX = (double)(rect.right - rect.left) / 257.0;
-    Y = (int)(rect.bottom - rect.top);
-    if ((Y-(Y/3)*3) > 1) dif = (Y+1)/3;
-    else dif = Y/3;
-
-    SelectObject(hdc, CreatePen(PS_SOLID, 1, RGB(0, 0, 0)));
-
-    for (j = 1; j <= Y; j++)
-    {
-        MoveToEx(hdc, rect.left, rect.bottom - j, NULL);
-        LineTo(hdc, rect.left, rect.bottom  - j);
-        for(i = 0; i < 256; i++)
-        {
-            switch(mfd->space_mode)
-            {
-            case 0:
-                switch(mfd->channel_mode)
-                {
-                case 0:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                case 1:
-                    r = i;
-                    g = 0;
-                    b = 0;
-                break;
-                case 2:
-                    r = 0;
-                    g = i;
-                    b = 0;
-                break;
-                case 3:
-                    r = 0;
-                    g = 0;
-                    b = i;
-                break;
-                }
-            break;
-            case 1:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                case 2:
-                    r = 0;
-                    g = ((0 - 88 * (i-128))/256);
-                    if (g<0) g=0; else if (g>255) g=255;
-                    b = ((0 + 451 * (i-128))/256);
-                    if (b<0) b=0; else if (b>255) b=255;
-                break;
-                case 3:
-                    r = ((359 * (i-128))/256);
-                    if (r<0) r=0;   if (r>255) r=255;
-                    g = ((0 - 182 * (i-128))/256);
-                    if (g<0) g=0; else if (g>255) g=255;
-                    b = 0;
-                break;
-                }
-            break;
-            case 2:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    r = 255 - i;
-                    g = 255;
-                    b = 255;
-                break;
-                case 2:
-                    r = 255;
-                    g = 255 - i;
-                    b = 255;
-                break;
-                case 3:
-                    r = 255;
-                    g = 255;
-                    b = 255 - i;
-                break;
-                case 4:
-                    r = 255 - i;
-                    g = 255 - i;
-                    b = 255 - i;
-                break;
-                }
-            break;
-            case 3:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    chi=((i*6)&0xFF00)>>8;
-                    ch=(i*6-(chi<<8));
-                    rd=(255)/256;
-                    gd=(255*(256-((255*ch)/256)))/256;
-                    bd=(255*(256-(255*(256-ch)/256)))/256;
-                    if (chi==0)      {r=255; g=bd; b=rd;}
-                    else if (chi==1) {r=gd; g=255; b=rd;}
-                    else if (chi==2) {r=rd; g=255; b=bd;}
-                    else if (chi==3) {r=rd; g=gd; b=255;}
-                    else if (chi==4) {r=bd; g=rd; b=255;}
-                    else             {r=255; g=rd; b=gd;}
-                break;
-                case 2:
-                    chi=((((j-1)/dif)*512)&0xFF00)>>8;
-                    ch=(((j-1)/dif)*512-(chi<<8));
-                    rd=(255*(256-i))/256;
-                    gd=(255*(256-((i*ch)/256)))/256;
-                    if (gd<0) gd=0;
-                    if (gd>255) gd= 255;
-                    bd=(255*(256-(i*(256-ch)/256)))/256;
-                    if (bd<0) bd=0;
-                    if (bd>255) bd= 255;
-                    if (chi==0)      {r=255; g=bd; b=rd;}
-                    else if (chi==1) {r=gd; g=255; b=rd;}
-                    else if (chi==2) {r=rd; g=255; b=bd;}
-                    else if (chi==3) {r=rd; g=gd; b=255;}
-                    else if (chi==4) {r=bd; g=rd; b=255;}
-                    else             {r=255; g=rd; b=gd;}
-                break;
-                case 3:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                }
-            break;
-            case 4:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    g=i*50+2040;
-                    if (i>20) {g1=g*g/32352.25239*g;}
-                    else {g1=i*43413.9788;}
-                    r=119*21.3925-2549.29+g;
-                    b=g-136*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                break;
-                case 2:
-                    g=(j*24)*50+2040;
-                    if (j*24>20) {g1=g*g/32352.25239*g;}
-                    else {g1=j*24*43413.9788;}
-                    r=i*21.3925-2549.29+g;
-                    b=g-136*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                    if (r<0) {r=0;}
-                    if (g<0) {g=0;}
-                    if (b<0) {b=0;}
-                    if (r>255) {r=255;}
-                    if (g>255) {g=255;}
-                    if (b>255) {b=255;}
-                break;
-                case 3:
-                    g=(j*24)*50+2040;
-                    if (j*24>20) {g1=g*g/32352.25239*g;}
-                    else {g1=j*24*43413.9788;}
-                    r=119*21.3925-2549.29+g;
-                    b=g-i*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                    if (r<0) {r=0;}
-                    if (g<0) {g=0;}
-                    if (b<0) {b=0;}
-                    if (r>255) {r=255;}
-                    if (g>255) {g=255;}
-                    if (b>255) {b=255;}
-                break;
-                }
-            break;
-            }
-            DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(r, g, b))));
-            LineTo(hdc, rect.left + 2 + (int)(scaleX * (i)), rect.bottom  - j);
-        }
-    }
-    ReleaseDC(hWnd, hdc);
-    DeleteObject(hPen);
-}
-
-void GrdDrawVBorder(HWND hWnd, MyFilterData *mfd)
-{
-    RECT rect;
-
-    InvalidateRect(hWnd, NULL, TRUE);
-    UpdateWindow(hWnd);
-    GetClientRect(hWnd, &rect);
-    int X;
     double scaleY;
+    int YY;
+    int XX;
     int i;
     int j;
+    int dif;
+    int x;
+    int y;
+    int z;
     int r;
     int g;
     int b;
-    int rd;
-    int gd;
-    int bd;
-    long r1;
-    long g1;
-    long b1;
     long rr;
     long gg;
     long bb;
     int ch;
     int chi;
-    int dif;
+    long lab;
+    int border;
+    int start;
+    int end;
     HDC hdc;
     HPEN hPen;
 
-    hdc = GetDC(hWnd);
-
-    X = (int)(rect.right - rect.left);
-    scaleY = (double)(rect.bottom - rect.top) / 256.0;
-    if ((X-(X/3)*3) > 1) dif = (X+1)/3;
-    else dif = X/3;
-
-    SelectObject(hdc, CreatePen(PS_SOLID, 1, RGB(0, 0, 0)));
-
-    for (j = 0; j < X; j++)
-    {
-        MoveToEx(hdc, rect.left + j, rect.bottom - 1, NULL);
-        LineTo(hdc, rect.left + j, rect.bottom - 1);
-        for(i = 0; i < 256; i++)
-        {
-            switch(mfd->space_mode)
-            {
-            case 0:
-                switch(mfd->channel_mode)
+    for (border = 0; border < 2; border++) {
+        if (border == 0) {
+            InvalidateRect(hWnd, NULL, TRUE);
+            UpdateWindow(hWnd);
+            GetClientRect(hWnd, &rect);
+            hdc = GetDC(hWnd);
+            scaleX = (double)(rect.right - rect.left) / 257.0;
+            YY = (int)(rect.bottom - rect.top);
+            dif = (YY+1)/3;
+            start=1;
+            end=YY;}
+        else {
+            InvalidateRect(hWnd2, NULL, TRUE);
+            UpdateWindow(hWnd2);
+            GetClientRect(hWnd2, &rect);
+            hdc = GetDC(hWnd2);
+            XX = (int)(rect.right - rect.left);
+            scaleY = (double)(rect.bottom - rect.top) / 256.0;
+            dif = (XX+1)/3;
+            start=0;
+            end=XX-1;}
+        SelectObject(hdc, CreatePen(PS_SOLID, 1, RGB(0, 0, 0)));
+        for (j = start; j <= end; j++)
+        {   if (border == 0) {
+                MoveToEx(hdc, rect.left, rect.bottom - j, NULL);
+                LineTo(hdc, rect.left, rect.bottom  - j);}
+            else {
+                MoveToEx(hdc, rect.left + j, rect.bottom - 1, NULL);
+                LineTo(hdc, rect.left + j, rect.bottom - 1);}
+            for(i = 0; i < 256; i++)
+            {   switch(mfd->space_mode)
                 {
-                case 0:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                case 1:
-                    r = i;
-                    g = 0;
-                    b = 0;
-                break;
-                case 2:
-                    r = 0;
-                    g = i;
-                    b = 0;
-                break;
-                case 3:
-                    r = 0;
-                    g = 0;
-                    b = i;
-                break;
+                    case 0:
+                        switch(mfd->channel_mode)
+                        {
+                        case 0:
+                            r = i;
+                            g = i;
+                            b = i;
+                        break;
+                        case 1:
+                            r = i;
+                            g = 0;
+                            b = 0;
+                        break;
+                        case 2:
+                            r = 0;
+                            g = i;
+                            b = 0;
+                        break;
+                        case 3:
+                            r = 0;
+                            g = 0;
+                            b = i;
+                        break;
+                        }
+                    break;
+                    case 1:
+                        switch(mfd->channel_mode)
+                        {
+                        case 1:
+                            x = i<<16;
+                            y = 0;
+                            z = 0;
+                        break;
+                        case 2:
+                            x = (j*23+2)<<16;
+                            y = i-128;
+                            z = 0;
+                        break;
+                        case 3:
+                            x = (j*23+2)<<16;
+                            y = 0;
+                            z = i-128;
+                        break;
+                        }
+                        rr = (32768 + x + 91881 * z);
+                        if (rr<0) {r=0;} else if (rr>16711680) {r=255;} else {r = rr>>16;}
+                        gg = (32768 + x - 22553 * y - 46802 * z);
+                        if (gg<0) {g=0;} else if (gg>16711680) {g=255;} else {g = gg>>16;}
+                        bb = (32768 + x + 116130 * y);
+                        if (bb<0) {b=0;} else if (bb>16711680) {b=255;} else {b = bb>>16;}
+                    break;
+                    case 2:
+                        switch(mfd->channel_mode)
+                        {
+                        case 1:
+                            r = 255 - i;
+                            g = 255;
+                            b = 255;
+                        break;
+                        case 2:
+                            r = 255;
+                            g = 255 - i;
+                            b = 255;
+                        break;
+                        case 3:
+                            r = 255;
+                            g = 255;
+                            b = 255 - i;
+                        break;
+                        case 4:
+                            r = 255 - i;
+                            g = 255 - i;
+                            b = 255 - i;
+                        break;
+                        }
+                    break;
+                    case 3:
+                        switch(mfd->channel_mode)
+                        {
+                        case 1:
+                            x = i;
+                            y = 255;
+                            z = 255;
+                        break;
+                        case 2:
+                            x = (j/dif)*86;
+                            y = i;
+                            z = 255;
+                        break;
+                        case 3:
+                            x = 0;
+                            y = 0;
+                            z = i;
+                        break;
+                        }
+                    if (y==0)
+                    {
+                        r = z;
+                        g = z;
+                        b = z;
+                    }
+                    else
+                    {   chi = ((x*6)&0xFF00);
+                        ch  = (x*6-chi);;
+                        switch(chi)
+                        {
+                        case 0:
+                            r = z;
+                            g = (z*(65263-(y*(256-ch)))+65531)>>16;
+                            b = (z*(255-y)+94)>>8;
+                            break;
+                        case 256:
+                            r = (z*(65263-y*ch)+65528)>>16;
+                            g = z;
+                            b = (z*(255-y)+89)>>8;
+                            break;
+                        case 512:
+                            r = (z*(255-y)+89)>>8;
+                            g = z;
+                            b = (z*(65267-(y*(256-ch)))+65529)>>16;
+                            break;
+                        case 768:
+                            r = (z*(255-y)+89)>>8;
+                            g = (z*(65267-y*ch)+65529)>>16;
+                            b = z;
+                            break;
+                        case 1024:
+                            r = (z*(65263-(y*(256-ch)))+65528)>>16;
+                            g = (z*(255-y)+89)>>8;
+                            b = z;
+                            break;
+                        default:
+                            r = z;
+                            g = (z*(255-y)+89)>>8;
+                            b = (z*(65309-y*(ch+1))+27)>>16;
+                            break;
+                        }
+                    }
+                    break;
+                    case 4:
+                        switch(mfd->channel_mode)
+                        {
+                        case 1:
+                            lab=labrgb[((i<<16)+30603)];
+                        break;
+                        case 2:
+                            lab=labrgb[(((j*23+2)<<16)+(i<<8)+136)];
+                        break;
+                        case 3:
+                            lab=labrgb[(((j*23+2)<<16)+30464+i)];
+                        break;
+                        }
+                        r = (lab & 0xFF0000)>>16;
+                        g = (lab & 0x00FF00)>>8;
+                        b = (lab & 0x0000FF);
+                    break;
                 }
-            break;
-            case 1:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                case 2:
-                    r = 0;
-                    g = ((0 - 88 * (i-128))/256);
-                    if (g<0) g=0; else if (g>255) g=255;
-                    b = ((0 + 451 * (i-128))/256);
-                    if (b<0) b=0; else if (b>255) b=255;
-                break;
-                case 3:
-                    r = ((359 * (i-128))/256);
-                    if (r<0) r=0;   if (r>255) r=255;
-                    g = ((0 - 182 * (i-128))/256);
-                    if (g<0) g=0; else if (g>255) g=255;
-                    b = 0;
-                break;
-                }
-            break;
-            case 2:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    r = 255 - i;
-                    g = 255;
-                    b = 255;
-                break;
-                case 2:
-                    r = 255;
-                    g = 255 - i;
-                    b = 255;
-                break;
-                case 3:
-                    r = 255;
-                    g = 255;
-                    b = 255 - i;
-                break;
-                case 4:
-                    r = 255 - i;
-                    g = 255 - i;
-                    b = 255 - i;
-                break;
-                }
-            break;
-            case 3:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    chi=((i*6)&0xFF00)>>8;
-                    ch=(i*6-(chi<<8));
-                    rd=(255)>>8;
-                    gd=(255*(256-((255*ch)>>8)))>>8;
-                    bd=(255*(256-(255*(256-ch)>>8)))/256;
-                    if (chi==0)      {r=255; g=bd; b=rd;}
-                    else if (chi==1) {r=gd; g=255; b=rd;}
-                    else if (chi==2) {r=rd; g=255; b=bd;}
-                    else if (chi==3) {r=rd; g=gd; b=255;}
-                    else if (chi==4) {r=bd; g=rd; b=255;}
-                    else             {r=255; g=rd; b=gd;}
-                break;
-                case 2:
-                    chi=(((j/dif)*512)&0xFF00)>>8;
-                    ch=((j/dif)*512-(chi<<8));
-                    rd=(255*(256-i))>>8;
-                    gd=(255*(256-((i*ch)>>8)))>>8;
-                    if (gd<0) gd=0;
-                    if (gd>255) gd= 255;
-                    bd=(255*(256-(i*(256-ch)>>8)))>>8;
-                    if (bd<0) bd=0;
-                    if (bd>255) bd= 255;
-                    if (chi==0)      {r=255; g=bd; b=rd;}
-                    else if (chi==1) {r=gd; g=255; b=rd;}
-                    else if (chi==2) {r=rd; g=255; b=bd;}
-                    else if (chi==3) {r=rd; g=gd; b=255;}
-                    else if (chi==4) {r=bd; g=rd; b=255;}
-                    else             {r=255; g=rd; b=gd;}
-                break;
-                case 3:
-                    r = i;
-                    g = i;
-                    b = i;
-                break;
-                }
-            break;
-            case 4:
-                switch(mfd->channel_mode)
-                {
-                case 1:
-                    g=i*50+2040;
-                    if (i>20) {g1=g*g/32352.25239*g;}
-                    else {g1=i*43413.9788;}
-                    r=119*21.3925-2549.29+g;
-                    b=g-136*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                break;
-                case 2:
-                    g=(j*24)*50+2040;
-                    if (j*24>20) {g1=g*g/32352.25239*g;}
-                    else {g1=j*24*43413.9788;}
-                    r=i*21.3925-2549.29+g;
-                    b=g-136*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                    if (r<0) {r=0;}
-                    if (g<0) {g=0;}
-                    if (b<0) {b=0;}
-                    if (r>255) {r=255;}
-                    if (g>255) {g=255;}
-                    if (b>255) {b=255;}
-                break;
-                case 3:
-                    g=(j*24)*50+2040;
-                    if (j*24>20) {g1=g*g/32352.25239*g;}
-                    else {g1=j*24*43413.9788;}
-                    r=119*21.3925-2549.29+g;
-                    b=g-i*58.6794+7976.65;
-                    if (r>3060) {r1=r*r/34038.16258*r;}
-                    else {r1=r*825.27-1683558;}
-                    if (b>3060) {b1=b*b/29712.85911*b;}
-                    else {b1=b*945.40-1928634;}
-                    rr = r1*16.20355 + g1*-7.6863 + b1*-2.492855;
-                    gg = r1*-4.84629 + g1*9.37995 + b1*0.2077785;
-                    bb = r1*0.278176 + g1*-1.01998 + b1*5.28535;
-                    if (rr>1565400) {r=(pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {r=(rr+75881.7458872)/151763.4917744;}
-                    if (gg>1565400) {g=(pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {g=(gg+75881.7458872)/151763.4917744;}
-                    if (bb>1565400) {b=(pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.025;}
-                    else {b=(bb+75881.7458872)/151763.4917744;}
-                    if (r<0) {r=0;}
-                    if (g<0) {g=0;}
-                    if (b<0) {b=0;}
-                    if (r>255) {r=255;}
-                    if (g>255) {g=255;}
-                    if (b>255) {b=255;}
-                break;
-                }
-            break;
+                if (border == 0) {
+                    DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(r, g, b))));
+                    LineTo(hdc, rect.left + 2 + (int)(scaleX * (i)), rect.bottom  - j);}
+                else {
+                    DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(r, g, b))));
+                    LineTo(hdc, rect.left + j, rect.bottom  - 2 - (int)(scaleY * (i)));}
             }
-            DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(r, g, b))));
-            LineTo(hdc, rect.left + j, rect.bottom  - 2 - (int)(scaleY * (i)));
         }
+        ReleaseDC(hWnd, hdc);
+        DeleteObject(hPen);
     }
-    ReleaseDC(hWnd, hdc);
-    DeleteObject(hPen);
 }
 
-void ImportCurve(HWND hWnd, MyFilterData *mfd)
+void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
 {
     FILE *pFile;
     int i;
@@ -2131,7 +1939,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd)
         }
     }
 }
-void ExportCurve(HWND hWnd, MyFilterData *mfd)
+void ExportCurve(HWND hWnd, MyFilterData *mfd) // export curves
 {
     FILE *pFile;
     int i;
