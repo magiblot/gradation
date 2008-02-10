@@ -1,7 +1,8 @@
 /*
-    Gradation Filter v1.35 for VirtualDub -- a wide range of color
+    Gradation Filter v1.36 for VirtualDub -- a wide range of color
     manipulation through gradation curves.
     Copyright (C) 2008 Alexander Nagiller
+    Speed optimizations for HSV and CMYK by Achim Stahlberger.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -226,7 +227,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger. Version 1.35",
+    "Version 1.36 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -270,6 +271,7 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 ///////////////////////////////////////////////////////////////////////////
 
+void PreCalcLut();
 void GrdDrawGradTable(HWND hWnd, int table[], int laboff);
 void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 void ImportCurve(HWND hWnd, MyFilterData *mfd);
@@ -280,6 +282,9 @@ void ExportCurve(HWND hWnd, MyFilterData *mfd);
 int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
+    if (mfd->Labprecalc==0 && mfd->process==8) { // build up the LUT for the Lab process if it is not precalculated already
+        PreCalcLut();
+        mfd->Labprecalc = 1;}
 
     mfd->evaluer = new Pixel32[256];
     mfd->evalueg = new Pixel32[256];
@@ -777,7 +782,10 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             return TRUE;
 
         case WM_PAINT:
-            {
+            {   if (mfd->Labprecalc==0 && mfd->process==8) { // build up the LUT for the Lab process if it is not precalculated already
+                    PreCalcLut();
+                    mfd->Labprecalc = 1;}
+
                 PAINTSTRUCT ps;
 
                 BeginPaint(hdlg, &ps);
@@ -1235,85 +1243,9 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         hWnd = GetDlgItem(hdlg, IDC_RGB);
                         SetWindowText (hWnd,"L/a/b");
                         if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
-                        if (mfd->Labprecalc==0) {   // build up the LUT for the Lab process
-                            long count;
-                            long x;
-                            long y;
-                            long z;
-                            long rr;
-                            long gg;
-                            long bb;
-                            long r1;
-                            long g1;
-                            long b1;
-                            int r;
-                            int g;
-                            int b;
-
-                            rgblab = new long[16777216];
-                            labrgb = new long[16777216];
-
-                            count=0;
-                            for (r=0; r<256; r++) {
-                                        for (g=0; g<256; g++) {
-                                            for (b=0; b<256; b++) {
-                                                if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
-                                                else {rr=long((r<<4)*9987.749);}
-                                                if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
-                                                else {gg=long((g<<4)*9987.749);}
-                                                if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
-                                                else {bb=long((b<<4)*9987.749);}
-                                                x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
-                                                y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
-                                                z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
-                                                //XYZ to Lab
-                                                if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
-                                                else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
-                                                if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
-                                                else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
-                                                if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
-                                                else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
-                                                x=long(((gg+16.90331)/33.806620)-40.8);
-                                                y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
-                                                z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
-                                                rgblab[count]=((x<<16)+(y<<8)+z);
-                                                count++;
-                                            }
-                                        }
-                                    }
-                            count = 0;
-                            for (x=0; x<256; x++) {
-                                        for (y=0; y<256; y++) {
-                                            for (z=0; z<256; z++) {
-                                                gg=x*50+2040;
-                                                rr=long(y*21.392519204-2549.29163142+gg);
-                                                bb=long(gg-z*58.67940678+7976.6510628);
-                                                if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
-                                                else {g1=long(x*43413.9788);}
-                                                if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
-                                                else {r1=long(rr*825.27369-1683558);}
-                                                if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
-                                                else {b1=long(bb*945.40885-1928634);}
-                                                //XYZ to RGB
-                                                rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
-                                                gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
-                                                bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
-                                                if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
-                                                else {r=int((rr+75881.7458872)/151763.4917744);}
-                                                if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
-                                                else {g=int((gg+75881.7458872)/151763.4917744);}
-                                                if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
-                                                else {b=int((bb+75881.7458872)/151763.4917744);}
-                                                if (r<0) {r=0;} else if (r>255) {r=255;}
-                                                if (g<0) {g=0;} else if (g>255) {g=255;}
-                                                if (b<0) {b=0;} else if (b>255) {b=255;}
-                                                labrgb[count]=((r<<16)+(g<<8)+b);
-                                                count++;
-                                            }
-                                        }
-                                    }
-                        }
-                        mfd->Labprecalc = 1;
+                        if (mfd->Labprecalc==0) {   // build up the LUT for the Lab process if it is not precalculated already
+                            PreCalcLut();
+                            mfd->Labprecalc = 1;}
                         break;
                     }
                     if (mfd->space_mode != 0) {
@@ -1428,6 +1360,86 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     }
     strcat (buf, "\")");
     return true;
+}
+
+void PreCalcLut()
+{
+    long count;
+    long x;
+    long y;
+    long z;
+    long rr;
+    long gg;
+    long bb;
+    long r1;
+    long g1;
+    long b1;
+    int r;
+    int g;
+    int b;
+
+    rgblab = new long[16777216];
+    labrgb = new long[16777216];
+
+    count=0;
+    for (r=0; r<256; r++) {
+                for (g=0; g<256; g++) {
+                    for (b=0; b<256; b++) {
+                        if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
+                        else {rr=long((r<<4)*9987.749);}
+                        if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
+                        else {gg=long((g<<4)*9987.749);}
+                        if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
+                        else {bb=long((b<<4)*9987.749);}
+                        x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
+                        y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
+                        z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
+                        //XYZ to Lab
+                        if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
+                        else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
+                        if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
+                        else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
+                        if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
+                        else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
+                        x=long(((gg+16.90331)/33.806620)-40.8);
+                        y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
+                        z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
+                        rgblab[count]=((x<<16)+(y<<8)+z);
+                        count++;
+                    }
+                }
+            }
+    count = 0;
+    for (x=0; x<256; x++) {
+                for (y=0; y<256; y++) {
+                    for (z=0; z<256; z++) {
+                        gg=x*50+2040;
+                        rr=long(y*21.392519204-2549.29163142+gg);
+                        bb=long(gg-z*58.67940678+7976.6510628);
+                        if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
+                        else {g1=long(x*43413.9788);}
+                        if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
+                        else {r1=long(rr*825.27369-1683558);}
+                        if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
+                        else {b1=long(bb*945.40885-1928634);}
+                        //XYZ to RGB
+                        rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
+                        gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
+                        bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
+                        if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
+                        else {r=int((rr+75881.7458872)/151763.4917744);}
+                        if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
+                        else {g=int((gg+75881.7458872)/151763.4917744);}
+                        if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
+                        else {b=int((bb+75881.7458872)/151763.4917744);}
+                        if (r<0) {r=0;} else if (r>255) {r=255;}
+                        if (g<0) {g=0;} else if (g>255) {g=255;}
+                        if (b<0) {b=0;} else if (b>255) {b=255;}
+                        labrgb[count]=((r<<16)+(g<<8)+b);
+                        count++;
+                    }
+                }
+            }
 }
 
 void GrdDrawGradTable(HWND hWnd, int table[], int loff) // draw the curve
