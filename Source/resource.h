@@ -14,6 +14,7 @@
 #define IDC_OUTPUTVALUE                 1011
 #define IDC_RESET                       1012
 #define IDC_INVERT                      1013
+#define IDC_INVERTX                     1013
 #define IDC_GRADCURVE                   1014
 #define IDC_SMOOTH                      1015
 #define IDC_HBORDER                     1016
@@ -26,6 +27,10 @@
 #define IDC_FULLW                       1023
 #define IDC_SPACE                       1024
 #define IDEXPORT                        1026
+#define IDC_BUTTONPM                    1029
+#define IDC_BUTTONLM                    1030
+#define IDC_BUTTONSM                    1031
+#define IDC_BUTTONGM                    1032
 
 // Next default values for new objects
 //
@@ -33,7 +38,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        106
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1029
+#define _APS_NEXT_CONTROL_VALUE         1033
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

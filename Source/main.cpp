@@ -1,5 +1,5 @@
 /*
-    Gradation Filter v1.36 for VirtualDub -- a wide range of color
+    Gradation Filter v1.38 for VirtualDub -- a wide range of color
     manipulation through gradation curves.
     Copyright (C) 2008 Alexander Nagiller
     Speed optimizations for HSV and CMYK by Achim Stahlberger.
@@ -76,16 +76,22 @@ ATOM RegisterFilterControl() {
     return RegisterClass(&wc);
 };
 
-LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam){
+LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam){ //curve box
     switch(message){
     case WM_MOUSEMOVE:
         if (wParam & MK_LBUTTON)
-        {
-        SendMessage((GetParent (hwnd)),WM_USER + 100,(LOWORD (lParam)),(HIWORD (lParam)));
-        }
+        {SendMessage((GetParent (hwnd)),WM_USER + 100,(LOWORD (lParam)),(HIWORD (lParam)));}
         return 0;
     case WM_LBUTTONDOWN:
-        SendMessage((GetParent (hwnd)),WM_USER + 101,0,0);
+        SetCapture (hwnd);
+        SendMessage((GetParent (hwnd)),WM_USER + 101,(LOWORD (lParam)),(HIWORD (lParam)));
+        return 0;
+    case WM_LBUTTONUP:
+        ReleaseCapture ();
+        SendMessage((GetParent (hwnd)),WM_USER + 102,0,0);
+        return 0;
+    case WM_RBUTTONDOWN:
+        SendMessage((GetParent (hwnd)),WM_USER + 103,(LOWORD (lParam)),(HIWORD (lParam)));
         return 0;
     }
     return DefWindowProc (hwnd, message, wParam, lParam) ;
@@ -177,7 +183,6 @@ enum {
     PROCESS_CMYK    = 6,
     PROCESS_HSV     = 7,
     PROCESS_LAB     = 8,
-
 };
 
 static char *process_names[]={
@@ -212,6 +217,11 @@ typedef struct MyFilterData {
     int filter;
     bool Labprecalc;
     int laboff;
+    int drwmode[5];
+    int drwpoint[5][16][2];
+    int poic[5];
+    int cp;
+    bool psel;
 } MyFilterData;
 
 ScriptFunctionDef func_defs[]={
@@ -227,7 +237,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Version 1.36 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
+    "Version 1.38 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -272,7 +282,8 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 ///////////////////////////////////////////////////////////////////////////
 
 void PreCalcLut();
-void GrdDrawGradTable(HWND hWnd, int table[], int laboff);
+void CalcCurve(MyFilterData *mfd);
+void GrdDrawGradTable(HWND hWnd, int table[], int laboff, int dmode, int dp[16][2], int pc);
 void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 void ImportCurve(HWND hWnd, MyFilterData *mfd);
 void ExportCurve(HWND hWnd, MyFilterData *mfd);
@@ -642,11 +653,14 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     int i;
 
     mfd->Labprecalc = 0;
+    for (i=0; i<5; i++){mfd->drwmode[i]=0;}
     mfd->value = 0;
     mfd->process = 0;
     mfd->xl = 300;
     mfd->yl = 300;
     mfd->offset = 0;
+    mfd->psel=false;
+    mfd->cp=0;
     for (i=0; i<256; i++) {
         mfd->ovalue[0][i] = i;
         mfd->ovalue[1][i] = i;
@@ -662,13 +676,22 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     MyFilterData *mfd = (MyFilterData *)GetWindowLong(hdlg, DWL_USER);
     int r;
     signed int inv[256];
+    int invp[16][2];
     int cx;
     int cy;
     int ax;
     int ay;
     signed int delta[256];
     int a;
+    int i;
+    int j;
+    int tmpx=0;
+    int tmpy=0;
+    bool stp;
+    bool ptp;
     signed int b;
+    int max;
+    int min;
 
     switch(msg) {
         case WM_INITDIALOG:
@@ -790,99 +813,203 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                 BeginPaint(hdlg, &ps);
                 EndPaint(hdlg, &ps);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                 GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
             }
             return TRUE;
 
-        case WM_LBUTTONDOWN:
-            mfd->xl = 300;
-            mfd->yl = 300;
-            return 0;
-        case WM_LBUTTONUP:
-            mfd->xl = 300;
-            mfd->yl = 300;
-            return 0;
-        case WM_MOUSEMOVE:
-            if (mfd->xl != 300){mfd->xl = 300;}
-            if (mfd->yl != 300){mfd->yl = 300;}
-            return 0;
         case WM_USER + 100:
-            if (wParam > 255)
-            {
-                ax = 255;
-            }
-            if (wParam <= 255)
-            {
-                ax = wParam;
-            }
-            if (lParam > 255)
-            {
-                ay = 0;
-            }
-            if (lParam <= 255)
-            {
-                ay = 255-lParam;
-            }
-            mfd->ovalue[mfd->channel_mode][ax]=(ay);
+            if (wParam > 32768) {ax = 0;}
+            else if (wParam > 255) {ax = 255;}
+            else {ax = wParam;}
+            if (lParam > 32768) {ay=255;}
+            else if (lParam > 255) {ay = 0;}
+            else {ay = 255-lParam;}
+            if (mfd->drwmode[mfd->channel_mode]==0){
+                mfd->ovalue[mfd->channel_mode][ax]=(ay);
 
-            if (ax > mfd->xl)
-            {
-                if ((ax-(mfd->xl))>1 && (ax-(mfd->xl))<256 && (mfd->xl)<256 && (mfd->yl)<256)
+                if (ax > mfd->xl)
                 {
-                    if (ay > (mfd->yl))
+                    if ((ax-(mfd->xl))>1 && (ax-(mfd->xl))<256 && (mfd->xl)<256 && (mfd->yl)<256)
                     {
-                        cy=(((ay-(mfd->yl))<<8)/(ax-(mfd->xl)));
-                        for (cx=((mfd->xl)+1);cx<ax;cx++)
+                        if (ay > (mfd->yl))
                         {
-                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+(((cx-(mfd->xl))*cy)>>8));
+                            cy=(((ay-(mfd->yl))<<8)/(ax-(mfd->xl)));
+                            for (cx=((mfd->xl)+1);cx<ax;cx++)
+                            {
+                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+(((cx-(mfd->xl))*cy)>>8));
+                            }
                         }
-                    }
-                    else
-                    {
-                        cy=(((mfd->yl)-ay)<<8)/(ax-(mfd->xl));
-                        for (cx=((mfd->xl)+1);cx<ax;cx++)
+                        else
                         {
-                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-(((cx-(mfd->xl))*cy)>>8));
+                            cy=(((mfd->yl)-ay)<<8)/(ax-(mfd->xl));
+                            for (cx=((mfd->xl)+1);cx<ax;cx++)
+                            {
+                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-(((cx-(mfd->xl))*cy)>>8));
+                            }
                         }
                     }
                 }
-            }
-            else
-            {
-                if (((mfd->xl)-ax)>1 && ((mfd->xl)-ax)<256 && (mfd->xl)<256 && (mfd->yl)<256)
+                else
                 {
-                    if (ay >= mfd->yl)
+                    if (((mfd->xl)-ax)>1 && ((mfd->xl)-ax)<256 && (mfd->xl)<256 && (mfd->yl)<256)
                     {
-                        cy=((ay-(mfd->yl))<<8)/((mfd->xl)-ax);
-                        for (cx=((mfd->xl)-1);cx>ax;cx--)
+                        if (ay >= mfd->yl)
                         {
-                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+((((mfd->xl)-cx)*cy)>>8));
+                            cy=((ay-(mfd->yl))<<8)/((mfd->xl)-ax);
+                            for (cx=((mfd->xl)-1);cx>ax;cx--)
+                            {
+                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+((((mfd->xl)-cx)*cy)>>8));
+                            }
                         }
-                    }
-                    else
-                    {
-                        cy=(((mfd->yl)-ay)<<8)/((mfd->xl)-ax);
-                        for (cx=((mfd->xl)-1);cx>ax;cx--)
+                        else
                         {
-                            mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-((((mfd->xl)-cx)*cy)>>8));
+                            cy=(((mfd->yl)-ay)<<8)/((mfd->xl)-ax);
+                            for (cx=((mfd->xl)-1);cx>ax;cx--)
+                            {
+                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-((((mfd->xl)-cx)*cy)>>8));
+                            }
                         }
                     }
                 }
+                mfd->xl = ax;
+                mfd->yl = ay;
             }
-            mfd->xl = ax;
-            mfd->yl = ay;
-            if (ax = mfd->value)
-            {
-                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+            else {
+                if (mfd->psel==true){
+                    if (mfd->drwmode[mfd->channel_mode]==3){
+                        if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
+                            max=mfd->drwpoint[mfd->channel_mode][2][1];
+                            min=mfd->drwpoint[mfd->channel_mode][0][1];}
+                        else {
+                            max=mfd->drwpoint[mfd->channel_mode][0][1];
+                            min=mfd->drwpoint[mfd->channel_mode][2][1];}
+                        switch (mfd->cp){
+                            case 0:
+                                if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
+                                    if (ay>mfd->drwpoint[mfd->channel_mode][1][1]){ay=mfd->drwpoint[mfd->channel_mode][1][1]-1;}}
+                                else {if (ay<mfd->drwpoint[mfd->channel_mode][1][1]){ay=mfd->drwpoint[mfd->channel_mode][1][1]+1;}}
+                            break;
+                            case 1:
+                                if (ay>=max){ay=max-1;}
+                                if (ay<=min){ay=min+1;}
+                            break;
+                            case 2:
+                                if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
+                                    if (ay<mfd->drwpoint[mfd->channel_mode][1][1]){ay=mfd->drwpoint[mfd->channel_mode][1][1]+1;}}
+                                else {if (ay>mfd->drwpoint[mfd->channel_mode][1][1]){ay=mfd->drwpoint[mfd->channel_mode][1][1]-1;}}
+                            break;
+                        }
+                        mfd->drwpoint[mfd->channel_mode][mfd->cp][1]=ay;
+                    }
+                    else {mfd->drwpoint[mfd->channel_mode][mfd->cp][1]=ay;}
+                    if (mfd->cp==0){
+                        if (ax>=mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0]){mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=(mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0])-1;}
+                        else {mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}}
+                    else if (mfd->cp==(mfd->poic[mfd->channel_mode]-1)){
+                        if (ax<=mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0]){mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=(mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0])+1;}
+                        else {mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}}
+                    else{
+                        /*if (ax>mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0]){
+                            tmpx=mfd->drwpoint[mfd->channel_mode][(mfd->cp)][0];
+                            tmpy=mfd->drwpoint[mfd->channel_mode][(mfd->cp)][1];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)][0]=mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)][1]=mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][1];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0]=tmpx;
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][1]=tmpy;
+                            mfd->cp=mfd->cp++;
+                            mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}*/
+                        if (ax>=mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0]){mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=(mfd->drwpoint[mfd->channel_mode][(mfd->cp)+1][0])-1;}
+                        else if (ax<=mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0]){mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=(mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0])+1;}
+                        /*else if (ax<mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0]){
+                            tmpx=mfd->drwpoint[mfd->channel_mode][(mfd->cp)][0];
+                            tmpy=mfd->drwpoint[mfd->channel_mode][(mfd->cp)][1];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)][0]=mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)][1]=mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][1];
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][0]=tmpx;
+                            mfd->drwpoint[mfd->channel_mode][(mfd->cp)-1][1]=tmpy;
+                            mfd->cp=mfd->cp--;
+                            mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}*/
+                        else {mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}
+                    }
+                    }
+                CalcCurve(mfd);
             }
-            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+            mfd->value=ax;
+            SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
+            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, ay, FALSE);
+            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
             mfd->ifp->RedoSystem();
             break;
 
         case WM_USER + 101:
-            mfd->xl = 300;
-            mfd->yl = 300;
+            if (mfd->drwmode[mfd->channel_mode]==0){
+                mfd->xl = 300;
+                mfd->yl = 300;}
+            else {
+                if (wParam > 255) {ax = 255;}
+                else if (wParam <= 255) {ax = wParam;}
+                if (lParam > 255) {ay = 0;}
+                else if (lParam <= 255) {ay = 255-lParam;}
+                mfd->psel=false;
+                for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){
+                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<31){
+                        mfd->cp=i;
+                        mfd->psel=true;}
+                }
+                if (mfd->drwmode[mfd->channel_mode]!=3){
+                    stp=false;
+                    ptp=false;
+                    if (mfd->psel==false && mfd->poic[mfd->channel_mode]<16)
+                        for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){
+                            if (mfd->drwpoint[mfd->channel_mode][i][0]>ax && ptp==false && mfd->drwpoint[mfd->channel_mode][0][0]<ax){
+                                ptp=true;
+                                if (ax>mfd->drwpoint[mfd->channel_mode][i-1][0]+11 && ax<mfd->drwpoint[mfd->channel_mode][i][0]-11){
+                                stp=true;
+                                for (j=mfd->poic[mfd->channel_mode];j>i;j--){
+                                    mfd->drwpoint[mfd->channel_mode][j][0]=mfd->drwpoint[mfd->channel_mode][j-1][0];
+                                    mfd->drwpoint[mfd->channel_mode][j][1]=mfd->drwpoint[mfd->channel_mode][j-1][1];}
+                                mfd->drwpoint[mfd->channel_mode][i][0]=ax;
+                                mfd->drwpoint[mfd->channel_mode][i][1]=ay;
+                                mfd->cp=i;}}
+                        }
+                        if (stp==true){
+                            mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]++;
+                            mfd->psel=true;
+                            CalcCurve(mfd);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                            mfd->ifp->RedoSystem();}
+                    }
+                }
+            break;
+
+        case WM_USER + 102:
+            mfd->psel=false;
+            break;
+
+        case WM_USER + 103:
+            if (mfd->drwmode[mfd->channel_mode]==0){
+                if (wParam > 255) {ax = 255;}
+                else if (wParam <= 255) {ax = wParam;}
+                mfd->value=ax;
+                SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
+            else if ((mfd->drwmode[mfd->channel_mode]==1 || mfd->drwmode[mfd->channel_mode]==2) && mfd->poic[mfd->channel_mode]>2){
+                if (wParam > 255) {ax = 255;}
+                else if (wParam <= 255) {ax = wParam;}
+                if (lParam > 255) {ay = 0;}
+                else if (lParam <= 255) {ay = 255-lParam;}
+                for (i=1; i<(mfd->poic[mfd->channel_mode])-1;i++){
+                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11){
+                        for (j=i; j<=(mfd->poic[mfd->channel_mode]-1);j++){
+                            mfd->drwpoint[mfd->channel_mode][j][0]=mfd->drwpoint[mfd->channel_mode][j+1][0];
+                            mfd->drwpoint[mfd->channel_mode][j][1]=mfd->drwpoint[mfd->channel_mode][j+1][1];}
+                        mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]--;
+                        CalcCurve(mfd);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                        mfd->ifp->RedoSystem();}
+                }
+            }
             break;
 
         case WM_HSCROLL:
@@ -929,7 +1056,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0Curves (*.acv)\0*.acv\0All Files\0*.*\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -951,7 +1078,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 {
                     ImportCurve (hdlg, mfd);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                     mfd->ifp->RedoSystem();
                 }
                 break;
@@ -1051,131 +1178,171 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 mfd->ifp->RedoSystem();
             break;
             case IDC_INPUTPLUS:
-                if (mfd->value < 255)
-                {
+                if (mfd->value < 255) {
                     mfd->value++;
                     SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                     SendMessage(GetDlgItem(hdlg, IDC_SVALUE), TBM_SETPOS, (WPARAM)TRUE, mfd->value);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
                 break;
             case IDC_INPUTMINUS:
-                if (mfd->value > 0)
-                {
+                if (mfd->value > 0) {
                     mfd->value--;
                     SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                     SendMessage(GetDlgItem(hdlg, IDC_SVALUE), TBM_SETPOS, (WPARAM)TRUE, mfd->value);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                }
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
                 break;
             case IDC_OUTPUTPLUS:
-                if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255)
-                {
-                    mfd->ovalue[mfd->channel_mode][mfd->value]++;
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                if (mfd->drwmode[mfd->channel_mode]==0){
+                    if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255) {
+                        mfd->ovalue[mfd->channel_mode][mfd->value]++;
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
-                mfd->ifp->RedoSystem();
                 break;
             case IDC_OUTPUTMINUS:
-                if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0)
-                {
-                    mfd->ovalue[mfd->channel_mode][mfd->value]--;
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                if (mfd->drwmode[mfd->channel_mode]==0){
+                    if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0) {
+                        mfd->ovalue[mfd->channel_mode][mfd->value]--;
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
-                mfd->ifp->RedoSystem();
                 break;
             case IDC_RESET: // reset the curve
-                for (i=0; i<256; i++)
-                {
-                    mfd->ovalue[mfd->channel_mode][i] = i;
-                }
+                switch (mfd->drwmode[mfd->channel_mode]){
+                    case 0:
+                        for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = i;}
+                        break;
+                    case 1:
+                        mfd->poic[mfd->channel_mode]=2;
+                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                        mfd->drwpoint[mfd->channel_mode][1][0]=255;
+                        mfd->drwpoint[mfd->channel_mode][1][1]=255;
+                        CalcCurve(mfd);
+                        break;
+                    case 2:
+                        mfd->poic[mfd->channel_mode]=2;
+                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                        mfd->drwpoint[mfd->channel_mode][1][0]=255;
+                        mfd->drwpoint[mfd->channel_mode][1][1]=255;
+                        CalcCurve(mfd);
+                        break;
+                    case 3:
+                        mfd->poic[mfd->channel_mode]=3;
+                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                        mfd->drwpoint[mfd->channel_mode][1][0]=128;
+                        mfd->drwpoint[mfd->channel_mode][1][1]=128;
+                        mfd->drwpoint[mfd->channel_mode][2][0]=255;
+                        mfd->drwpoint[mfd->channel_mode][2][1]=255;
+                        CalcCurve(mfd);
+                        break;
+                    }
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                 mfd->ifp->RedoSystem();
                 break;
             case IDC_SMOOTH:  // smooth the curve
-                if (mfd->ovalue[mfd->channel_mode][0]<=mfd->ovalue[mfd->channel_mode][255])
-                {
-                    a = mfd->ovalue[mfd->channel_mode][0];
-                    b = mfd->ovalue[mfd->channel_mode][255]-a;
-                }
-                else if (mfd->ovalue[mfd->channel_mode][0]>mfd->ovalue[mfd->channel_mode][255])
-                {
-                    a = mfd->ovalue[mfd->channel_mode][0];
-                    b = -a+mfd->ovalue[mfd->channel_mode][255];
-                }
-                for (i=0; i<256; i++)
-                {
-                    delta[i] = mfd->ovalue[mfd->channel_mode][i]-(((i*b)/255)+a);
-                }
-                for (i=0; i<255; i++)
-                {
-                    if (i < 2)
-                    {
-                        if (i==0)
+                if (mfd->drwmode[mfd->channel_mode] == 0){
+                    if (mfd->ovalue[mfd->channel_mode][0]<=mfd->ovalue[mfd->channel_mode][255]) {
+                        a = mfd->ovalue[mfd->channel_mode][0];
+                        b = mfd->ovalue[mfd->channel_mode][255]-a;}
+                    else if (mfd->ovalue[mfd->channel_mode][0]>mfd->ovalue[mfd->channel_mode][255]) {
+                        a = mfd->ovalue[mfd->channel_mode][0];
+                        b = -a+mfd->ovalue[mfd->channel_mode][255];}
+                    for (i=0; i<256; i++) {delta[i] = mfd->ovalue[mfd->channel_mode][i]-(((i*b)/255)+a);}
+                    for (i=0; i<255; i++) {
+                        if (i < 2)
                         {
-                            inv[i]=(delta[i]*25)/25;
+                            if (i==0) {inv[i]=(delta[i]*25)/25;}
+                            else {inv[i]=(delta[i]*25+delta[i-1]*50)/75;}
                         }
-                        else
+                        else {inv[i]=(delta[i]*25+delta[i-1]*50+delta[i-2]*25)/100;}
+                    }
+                    for (i=0; i<255; i++) {delta[i]=inv[i];}
+                    for (i=255; i>0; i--) {
+                        if (i > 253)
                         {
-                            inv[i]=(delta[i]*25+delta[i-1]*50)/75;
+                            if (i==255) {inv[i]=(delta[i]*25)/25;}
+                            else {inv[i]=(delta[i]*25+delta[i+1]*50)/75;}
                         }
+                        else {inv[i]=(delta[i]*25+delta[i+1]*50+delta[i+2]*25)/100;}
                     }
-                    else
-                    {
-                        inv[i]=(delta[i]*25+delta[i-1]*50+delta[i-2]*25)/100;
-                    }
+                    for (i=255; i>0; i--) {delta[i]=inv[i];}
+                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;}
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();
                 }
-                for (i=0; i<255; i++)
-                {
-                    delta[i]=inv[i];
+                break;
+            case IDC_INVERTX:
+                if (mfd->drwmode[mfd->channel_mode] == 0){
+                    for (i=0; i<256; i++) {inv[255-i] = mfd->ovalue[mfd->channel_mode][i];}
+                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = inv[i];}
                 }
-                for (i=255; i>0; i--)
-                {
-                    if (i > 253)
-                    {
-                        if (i==255)
-                        {
-                            inv[i]=(delta[i]*25)/25;
-                        }
-                        else
-                        {
-                            inv[i]=(delta[i]*25+delta[i+1]*50)/75;
-                        }
-                    }
-                    else
-                    {
-                        inv[i]=(delta[i]*25+delta[i+1]*50+delta[i+2]*25)/100;
-                    }
-                }
-                for (i=255; i>0; i--)
-                {
-                    delta[i]=inv[i];
-                }
-                for (i=0; i<256; i++)
-                {
-                    mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;
+                else {
+                    for (i=0;i<mfd->poic[mfd->channel_mode];i++){
+                        invp[i][0]=255-mfd->drwpoint[mfd->channel_mode][mfd->poic[mfd->channel_mode]-1-i][0];
+                        invp[i][1]=mfd->drwpoint[mfd->channel_mode][mfd->poic[mfd->channel_mode]-1-i][1];}
+                    for (i=0;i<mfd->poic[mfd->channel_mode];i++){
+                        mfd->drwpoint[mfd->channel_mode][i][0]=invp[i][0];
+                        mfd->drwpoint[mfd->channel_mode][i][1]=invp[i][1];}
+                    CalcCurve(mfd);
                 }
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                 mfd->ifp->RedoSystem();
                 break;
-            case IDC_INVERT:
-                r=255;
-                for (i=0; i<256; i++)
-                {
-                    inv[r] = mfd->ovalue[mfd->channel_mode][i];
-                    r--;
-                }
-                for (i=0; i<256; i++)
-                {
-                    mfd->ovalue[mfd->channel_mode][i] = inv[i];
-                }
-                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
-                mfd->ifp->RedoSystem();
+            case IDC_BUTTONPM:
+                if (mfd->drwmode[mfd->channel_mode]!=0){
+                    mfd->drwmode[mfd->channel_mode]=0;
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();}
+                break;
+            case IDC_BUTTONLM:
+                if (mfd->drwmode[mfd->channel_mode]!=1){
+                    mfd->drwmode[mfd->channel_mode]=1;
+                    mfd->poic[mfd->channel_mode]=2;
+                    mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                    mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                    mfd->drwpoint[mfd->channel_mode][1][0]=255;
+                    mfd->drwpoint[mfd->channel_mode][1][1]=255;
+                    CalcCurve(mfd);
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();}
+                break;
+            case IDC_BUTTONSM:
+                if (mfd->drwmode[mfd->channel_mode]!=2){
+                    mfd->drwmode[mfd->channel_mode]=2;
+                    mfd->poic[mfd->channel_mode]=2;
+                    mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                    mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                    mfd->drwpoint[mfd->channel_mode][1][0]=255;
+                    mfd->drwpoint[mfd->channel_mode][1][1]=255;
+                    CalcCurve(mfd);
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();}
+                break;
+            case IDC_BUTTONGM:
+                if (mfd->drwmode[mfd->channel_mode]!=3){
+                    mfd->drwmode[mfd->channel_mode]=3;
+                    mfd->poic[mfd->channel_mode]=3;
+                    mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                    mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                    mfd->drwpoint[mfd->channel_mode][1][0]=128;
+                    mfd->drwpoint[mfd->channel_mode][1][1]=128;
+                    mfd->drwpoint[mfd->channel_mode][2][0]=255;
+                    mfd->drwpoint[mfd->channel_mode][2][1]=255;
+                    CalcCurve(mfd);
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    mfd->ifp->RedoSystem();}
                 break;
             case IDC_SPACE:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
@@ -1272,7 +1439,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
                     mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                     GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                     mfd->ifp->RedoSystem();
                 }
@@ -1287,7 +1454,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                     else {mfd->laboff = 0;}
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
                     GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                     mfd->ifp->RedoSystem();
                 }
@@ -1362,6 +1529,92 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     return true;
 }
 
+void CalcCurve(MyFilterData *mfd)
+{
+    int c1;
+    int c2;
+    int dx;
+    int dy;
+    int dxg;
+    int dyg;
+    double div;
+    double inc;
+    double ofs;
+    double ga;
+    double sx;
+    double ex;
+    int klo, khi, i, k, n, z;
+    float a, b, h, qn, sig, un;
+    double p, y2a[20], u [20];
+    int x;
+
+    switch (mfd->drwmode[mfd->channel_mode]){
+        case 1:
+            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
+            for (c1=0; c1<(mfd->poic[mfd->channel_mode]-1); c1++){
+                div=(mfd->drwpoint[mfd->channel_mode][(c1+1)][0]-mfd->drwpoint[mfd->channel_mode][c1][0]);
+                inc=(mfd->drwpoint[mfd->channel_mode][(c1+1)][1]-mfd->drwpoint[mfd->channel_mode][c1][1])/div;
+                ofs=mfd->drwpoint[mfd->channel_mode][c1][1]-inc*mfd->drwpoint[mfd->channel_mode][c1][0];
+                for (c2=mfd->drwpoint[mfd->channel_mode][c1][0];c2<(mfd->drwpoint[mfd->channel_mode][(c1+1)][0]+1);c2++)
+                {mfd->ovalue[mfd->channel_mode][c2]=int(c2*inc+ofs);
+                if ((c2*inc+ofs)-(mfd->ovalue[mfd->channel_mode][c2])>0.5) {mfd->ovalue[mfd->channel_mode][c2]=mfd->ovalue[mfd->channel_mode][c2]+1;}}
+            }
+            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
+        break;
+        case 2:
+            n=mfd->poic[mfd->channel_mode]-1;
+            //y2a[1] = -0.5;
+            //u[1]=(3.0/(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0]))*((mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][1][1])/(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][1])-0);
+            y2a[1]=u[1]=0.0;
+            for (i=1; i<=n-1; i++) {
+                sig = (mfd->drwpoint[mfd->channel_mode][i][0] - mfd->drwpoint[mfd->channel_mode][i-1][0])/(mfd->drwpoint[mfd->channel_mode][i+1][0] - mfd->drwpoint[mfd->channel_mode][i-1][0]);
+                p = sig * y2a[i-1] + 2.0;
+                y2a[i] = (sig - 1.0) / p;
+                u[i] = (mfd->drwpoint[mfd->channel_mode][i+1][1] - mfd->drwpoint[mfd->channel_mode][i][1])/(mfd->drwpoint[mfd->channel_mode][i+1][0] - mfd->drwpoint[mfd->channel_mode][i][0]) - (mfd->drwpoint[mfd->channel_mode][i][1] - mfd->drwpoint[mfd->channel_mode][i-1][1])/(mfd->drwpoint[mfd->channel_mode][i][0] - mfd->drwpoint[mfd->channel_mode][i-1][0]);
+                u[i] = (6.0*u[i]/(mfd->drwpoint[mfd->channel_mode][i+1][0] - mfd->drwpoint[mfd->channel_mode][i-1][0]) - sig*u[i-1])/p;
+                }
+            qn=un=0.0;
+            //qn=un=0.5;
+            //un=(3.0/(mfd->drwpoint[mfd->channel_mode][n][0]-mfd->drwpoint[mfd->channel_mode][n-1][0]))*(255-(mfd->drwpoint[mfd->channel_mode][n][1]-mfd->drwpoint[mfd->channel_mode][n-1][1])/(mfd->drwpoint[mfd->channel_mode][n][0]-mfd->drwpoint[mfd->channel_mode][n-1][0]));
+            y2a[n]=(un - qn*u[n-1])/(qn * y2a[n-1] + 1.0);
+            for (k=n-1; k>=0; k--) {y2a[k] = y2a[k] * y2a[k+1] + u[k];}
+
+            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
+            for (x=mfd->drwpoint[mfd->channel_mode][0][0]; x<mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]; x++) {
+                klo=1;
+                khi=n;
+                while (khi-klo > 1) {
+                    k=(khi + klo) >> 1;
+                        if (mfd->drwpoint[mfd->channel_mode][k][0] > x ) {khi = k;}
+                        else {klo = k;}
+                    }
+                h = mfd->drwpoint[mfd->channel_mode][khi][0] - mfd->drwpoint[mfd->channel_mode][klo][0];
+                a = (mfd->drwpoint[mfd->channel_mode][khi][0] - x)/h;
+                b = (x - mfd->drwpoint[mfd->channel_mode][klo][0])/h;
+
+                z = (int)(a * mfd->drwpoint[mfd->channel_mode][klo][1] + b*mfd->drwpoint[mfd->channel_mode][khi][1] + ((a*a*a - a)*y2a[klo] + (b*b*b - b)*y2a[khi]) * (h*h) / 6.0);
+                if(z>255) z=255;
+                if(z<0) z=0;
+                mfd->ovalue[mfd->channel_mode][x] = z;
+                }
+            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
+
+        break;
+        case 3:
+            dx=mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0];
+            dy=mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][0][1];
+            dxg=mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0];
+            dyg=mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1];
+            ga=log(double(dyg)/double(dy))/log(double(dxg)/double(dx));
+            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
+            for (c1=0; c1<dx+1; c1++){
+                mfd->ovalue[mfd->channel_mode][c1+mfd->drwpoint[mfd->channel_mode][0][0]]=int(dy*(pow((double(c1)/dx),(ga))))+mfd->drwpoint[mfd->channel_mode][0][1];
+            }
+            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
+        break;
+    }
+}
+
 void PreCalcLut()
 {
     long count;
@@ -1383,66 +1636,66 @@ void PreCalcLut()
 
     count=0;
     for (r=0; r<256; r++) {
-                for (g=0; g<256; g++) {
-                    for (b=0; b<256; b++) {
-                        if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
-                        else {rr=long((r<<4)*9987.749);}
-                        if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
-                        else {gg=long((g<<4)*9987.749);}
-                        if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
-                        else {bb=long((b<<4)*9987.749);}
-                        x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
-                        y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
-                        z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
-                        //XYZ to Lab
-                        if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
-                        else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
-                        if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
-                        else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
-                        if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
-                        else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
-                        x=long(((gg+16.90331)/33.806620)-40.8);
-                        y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
-                        z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
-                        rgblab[count]=((x<<16)+(y<<8)+z);
-                        count++;
-                    }
-                }
+        for (g=0; g<256; g++) {
+            for (b=0; b<256; b++) {
+                if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
+                else {rr=long((r<<4)*9987.749);}
+                if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
+                else {gg=long((g<<4)*9987.749);}
+                if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
+                else {bb=long((b<<4)*9987.749);}
+                x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
+                y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
+                z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
+                //XYZ to Lab
+                if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
+                else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
+                if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
+                else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
+                if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
+                else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
+                x=long(((gg+16.90331)/33.806620)-40.8);
+                y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
+                z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
+                rgblab[count]=((x<<16)+(y<<8)+z);
+                count++;
             }
+        }
+    }
     count = 0;
     for (x=0; x<256; x++) {
-                for (y=0; y<256; y++) {
-                    for (z=0; z<256; z++) {
-                        gg=x*50+2040;
-                        rr=long(y*21.392519204-2549.29163142+gg);
-                        bb=long(gg-z*58.67940678+7976.6510628);
-                        if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
-                        else {g1=long(x*43413.9788);}
-                        if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
-                        else {r1=long(rr*825.27369-1683558);}
-                        if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
-                        else {b1=long(bb*945.40885-1928634);}
-                        //XYZ to RGB
-                        rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
-                        gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
-                        bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
-                        if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
-                        else {r=int((rr+75881.7458872)/151763.4917744);}
-                        if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
-                        else {g=int((gg+75881.7458872)/151763.4917744);}
-                        if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
-                        else {b=int((bb+75881.7458872)/151763.4917744);}
-                        if (r<0) {r=0;} else if (r>255) {r=255;}
-                        if (g<0) {g=0;} else if (g>255) {g=255;}
-                        if (b<0) {b=0;} else if (b>255) {b=255;}
-                        labrgb[count]=((r<<16)+(g<<8)+b);
-                        count++;
-                    }
-                }
+        for (y=0; y<256; y++) {
+            for (z=0; z<256; z++) {
+                gg=x*50+2040;
+                rr=long(y*21.392519204-2549.29163142+gg);
+                bb=long(gg-z*58.67940678+7976.6510628);
+                if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
+                else {g1=long(x*43413.9788);}
+                if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
+                else {r1=long(rr*825.27369-1683558);}
+                if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
+                else {b1=long(bb*945.40885-1928634);}
+                //XYZ to RGB
+                rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
+                gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
+                bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
+                if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
+                else {r=int((rr+75881.7458872)/151763.4917744);}
+                if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
+                else {g=int((gg+75881.7458872)/151763.4917744);}
+                if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
+                else {b=int((bb+75881.7458872)/151763.4917744);}
+                if (r<0) {r=0;} else if (r>255) {r=255;}
+                if (g<0) {g=0;} else if (g>255) {g=255;}
+                if (b<0) {b=0;} else if (b>255) {b=255;}
+                labrgb[count]=((r<<16)+(g<<8)+b);
+                count++;
             }
+        }
+    }
 }
 
-void GrdDrawGradTable(HWND hWnd, int table[], int loff) // draw the curve
+void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2], int pc)   // draw the curve
 {
     RECT rect;
 
@@ -1491,8 +1744,13 @@ void GrdDrawGradTable(HWND hWnd, int table[], int loff) // draw the curve
 
     LineTo(hdc, rect.left + (int)((scaleX * (255))), rect.bottom - (int)(scaleY * (table[255])));
 
-    ReleaseDC(hWnd, hdc);
     DeleteObject(hPen);
+
+    if (dmode!=0) {
+        for (i=0;i<pc;i++){
+            Rectangle(hdc, rect.left + (int)((scaleX *(dp[i][0]))-3),rect.bottom - (int)((scaleY *(dp[i][1]))-3),rect.left + (int)((scaleX *(dp[i][0]))+3),rect.bottom - (int)((scaleY *(dp[i][1]))+3));}
+    }
+    ReleaseDC(hWnd, hdc);
 }
 
 void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two color borders
@@ -1738,14 +1996,33 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
     int count;
     int csta;
     int offset;
+    int noocur;
+    int cupos;
+    int copos;
+    int curpos;
+    int cordpos;
+    int curposnext;
+    int cordcount;
+    int c2;
+    int c3;
+    int c1;
+    double inc;
+    double ofs;
+    double div;
+    curpos = 0;
+    cordpos = 7;
+    cordcount = 0;
+    cupos=0;
+    copos=0;
 
     mark = 0;
     start = 10000;
     csta = 10000;
     count = 0;
     offset = 0;
+    for (i=0;i<5;i++){mfd->drwmode[i]=0;}
 
-    if (mfd->filter == 2)
+    if (mfd->filter == 2)  // *.csv
     {
         pFile = fopen (mfd->filename, "r");
         if (pFile==NULL)
@@ -1765,7 +2042,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
             lSize = lSize/4;
         }
     }
-    else if (mfd->filter == 3 || mfd->filter == 4)
+    else if (mfd->filter == 3 || mfd->filter == 4)   // *.crv *.map
     {
         pFile = fopen (mfd->filename, "rb");
         if (pFile==NULL)
@@ -1869,7 +2146,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
             }
         }
     }
-    else if (mfd->filter == 5)
+    else if (mfd->filter == 5)  // *.amp Smartvurve hsv
     {
         pFile = fopen (mfd->filename, "rb");
         if (pFile==NULL)
@@ -1894,9 +2171,70 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
             lSize = 768;
         }
     }
-    else
+    else if (mfd->filter == 6)  // *.acv
     {
         pFile = fopen (mfd->filename, "rb");
+        if (pFile==NULL)
+        {
+            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
+        }
+        else
+        {   fseek (pFile , 0 , SEEK_END);
+            lSize = ftell (pFile);
+            rewind (pFile);
+            for(i=0; (i <= lSize) && ( feof(pFile) == 0 ); i++ )     //read the file and store the coordinates
+            {
+                cv = fgetc(pFile);
+                if (i==3) { noocur = cv;
+                    if (noocur>5) {noocur=5;}
+                    curpos = 0;}
+                if (i==5) {mfd->poic[curpos]=cv;
+                    if (noocur >= (curpos+1))
+                    {curposnext = i+mfd->poic[curpos]*4+2;
+                    curpos++;}}
+                if (i==curposnext) {
+                    mfd->poic[curpos] = cv;
+                    if (noocur >= (curpos+1))
+                    {curposnext = i+mfd->poic[curpos]*4+2;
+                    if (mfd->poic[curpos-1]>16) {mfd->poic[curpos-1]=16;}
+                    curpos++;
+                    cordcount=0;
+                    cordpos=i+2;}}
+                if (i==cordpos) {
+                    mfd->drwpoint[curpos-1][cordcount][1]=cv;}
+                if (i==(cordpos+2)) {
+                    mfd->drwpoint[curpos-1][cordcount][0]=cv;
+                    if (cordcount<15) {cordcount++;}
+                    cordpos=cordpos+4;}
+            }
+            fclose (pFile);
+            for (i=0;i<5;i++) {mfd->drwmode[i]=1;}
+            lSize = 1280;
+            if (noocur<5){         //fill empty curves if acv does contain less than 5 curves
+                for (i=noocur;i<5;i++)
+                    {mfd->poic[i]=2;
+                    mfd->drwpoint[i][0][0]=0;
+                    mfd->drwpoint[i][0][1]=0;
+                    mfd->drwpoint[i][1][0]=255;
+                    mfd->drwpoint[i][1][1]=255;}
+                noocur=5;}
+            for (c1=0; c1<noocur; c1++){     //generate the curve from the coordinates
+                if (mfd->drwpoint[c1][0][0]>0) {for (c3=0;c3<mfd->drwpoint[c1][0][0];c3++){stor[((256*c1)+c3)]=mfd->drwpoint[c1][0][1];}}
+                for (c2=0; c2<(mfd->poic[c1]-1); c2++){
+                    div=(mfd->drwpoint[c1][(c2+1)][0]-mfd->drwpoint[c1][c2][0]);
+                    inc=(mfd->drwpoint[c1][(c2+1)][1]-mfd->drwpoint[c1][c2][1])/div;
+                    ofs=mfd->drwpoint[c1][c2][1]-inc*mfd->drwpoint[c1][c2][0];
+                    for (c3=mfd->drwpoint[c1][c2][0];c3<(mfd->drwpoint[c1][(c2+1)][0]+1);c3++)
+                    {stor[((256*c1)+c3)]=int(c3*inc+ofs);
+                    if ((c3*inc+ofs)-stor[((256*c1)+c3)]>0.5) {stor[((256*c1)+c3)]=stor[((256*c1)+c3)]+1;}}
+                }
+                if (mfd->drwpoint[c1][(mfd->poic[0]-1)][0]<255) {for (c3=mfd->drwpoint[c1][(mfd->poic[c1]-1)][0];c3<256;c3++){stor[((256*c1)+c3)]=mfd->drwpoint[c1][(mfd->poic[c1]-1)][1];}}
+            }
+        }
+    }
+    else
+    {
+        pFile = fopen (mfd->filename, "rb"); // *.amp
         if (pFile==NULL)
         {
             MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
@@ -1958,7 +2296,7 @@ void ExportCurve(HWND hWnd, MyFilterData *mfd) // export curves
     int j;
     char c;
 
-    if (mfd->filter == 2){
+    if (mfd->filter == 2){    // *.csv
         pFile = fopen (mfd->filename,"w");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
@@ -1966,7 +2304,7 @@ void ExportCurve(HWND hWnd, MyFilterData *mfd) // export curves
             }
         }
     }
-    else {
+    else {  // *.amp
         pFile = fopen (mfd->filename,"wb");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
