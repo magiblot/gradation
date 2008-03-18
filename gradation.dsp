@@ -130,6 +130,22 @@ SOURCE=.\Source\VBitmap.h
 # Begin Group "Resource Files"
 
 # PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+# Begin Source File
+
+SOURCE=.\Source\Gamma32.ico
+# End Source File
+# Begin Source File
+
+SOURCE=.\Source\Line32.ico
+# End Source File
+# Begin Source File
+
+SOURCE=.\Source\Pen32.ico
+# End Source File
+# Begin Source File
+
+SOURCE=.\Source\Spline32.ico
+# End Source File
 # End Group
 # End Target
 # End Project

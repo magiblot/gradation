@@ -1,5 +1,5 @@
 /*
-    Gradation Filter v1.39 for VirtualDub -- a wide range of color
+    Gradation Filter v1.44 for VirtualDub -- a wide range of color
     manipulation through gradation curves.
     Copyright (C) 2008 Alexander Nagiller
     Speed optimizations for HSV and CMYK by Achim Stahlberger.
@@ -47,6 +47,8 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
 ///////////////////////////////////////////////////////////////////////////
 long *rgblab; //LUT Lab
 long *labrgb; //LUT Lab
+
+HINSTANCE hInst;
 
 static LRESULT CALLBACK FiWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -199,12 +201,9 @@ static char *process_names[]={
 
 typedef struct MyFilterData {
     IFilterPreview *ifp;
-    Pixel32 *evaluer;
-    Pixel32 *evalueg;
-    Pixel32 *evalueb;
-    Pixel32 *cvaluer;
-    Pixel32 *cvalueg;
-    Pixel32 *cvalueb;
+    long rvalue[3][256];
+    int gvalue[3][256];
+    int bvalue[256];
     int ovalue[5][256];
     int value;
     int space_mode;
@@ -222,11 +221,12 @@ typedef struct MyFilterData {
     int poic[5];
     int cp;
     bool psel;
-    int gamma;
+    TCHAR gamma[10];
 } MyFilterData;
 
 ScriptFunctionDef func_defs[]={
     { (ScriptFunctionPtr)ScriptConfig, "Config", "0is" },
+    { (ScriptFunctionPtr)ScriptConfig, NULL,     "0iss" },
     { NULL },
 };
 
@@ -238,7 +238,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Version 1.39 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
+    "Version 1.44 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -284,7 +284,7 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 void PreCalcLut();
 void CalcCurve(MyFilterData *mfd);
-void GrdDrawGradTable(HWND hWnd, int table[], int laboff, int dmode, int dp[16][2], int pc);
+void GrdDrawGradTable(HWND hWnd, int table[], int laboff, int dmode, int dp[16][2], int pc, int ap);
 void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 void ImportCurve(HWND hWnd, MyFilterData *mfd);
 void ExportCurve(HWND hWnd, MyFilterData *mfd);
@@ -293,26 +293,9 @@ void ExportCurve(HWND hWnd, MyFilterData *mfd);
 
 int StartProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-    int i;
     if (mfd->Labprecalc==0 && mfd->process==8) { // build up the LUT for the Lab process if it is not precalculated already
         PreCalcLut();
         mfd->Labprecalc = 1;}
-
-    mfd->evaluer = new Pixel32[256];
-    mfd->evalueg = new Pixel32[256];
-    mfd->evalueb = new Pixel32[256];
-    mfd->cvaluer = new Pixel32[256];
-    mfd->cvalueg = new Pixel32[256];
-    mfd->cvalueb = new Pixel32[256];
-
-    for (i=0; i<256; i++) {
-        mfd->evaluer[i] = (mfd->ovalue[0][i] - i)<<16;
-        mfd->evalueg[i] = (mfd->ovalue[0][i] - i)<<8;
-        mfd->evalueb[i] = (mfd->ovalue[0][i] - i);
-        mfd->cvaluer[i] = (mfd->ovalue[1][i] - i)<<16;
-        mfd->cvalueg[i] = (mfd->ovalue[2][i] - i)<<8;
-        mfd->cvalueb[i] = (mfd->ovalue[3][i] - i);
-    }
     return 0;
 }
 
@@ -322,12 +305,6 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
     Pixel32 *src, *dst;
     const PixDim width = fa->src.w;
     const PixDim height = fa->src.h;
-    const Pixel32 *evaluer = mfd->evaluer;
-    const Pixel32 *evalueg = mfd->evalueg;
-    const Pixel32 *evalueb = mfd->evalueb;
-    const Pixel32 *cvaluer = mfd->cvaluer;
-    const Pixel32 *cvalueg = mfd->cvalueg;
-    const Pixel32 *cvalueb = mfd->cvalueb;
 
     long r;
     int g;
@@ -361,7 +338,7 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                new_pixel = ((old_pixel & 0xFF0000) + evaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + evalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + evalueb[(old_pixel & 0x0000FF)]);
+                new_pixel = mfd->rvalue[0][(old_pixel & 0xFF0000)>>16] + mfd->gvalue[0][(old_pixel & 0x00FF00)>>8] + mfd->ovalue[0][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + evaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + evalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + evalueb[(old_pixel & 0x0000FF)]); //
                 *dst++ = new_pixel;
             }
             src = (Pixel32 *)((char *)src + fa->src.modulo);
@@ -374,8 +351,8 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
-                new_pixel = ((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + ((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
+                med_pixel = mfd->rvalue[1][(old_pixel & 0xFF0000)>>16] + mfd->gvalue[1][(old_pixel & 0x00FF00)>>8] + mfd->ovalue[3][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                new_pixel = mfd->rvalue[0][(med_pixel & 0xFF0000)>>16] + mfd->gvalue[0][(med_pixel & 0x00FF00)>>8] + mfd->ovalue[0][(med_pixel & 0x0000FF)];//((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + mfd->ovalue[0][(med_pixel & 0x0000FF)];//((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
                 *dst++ = new_pixel;
             }
             src = (Pixel32 *)((char *)src + fa->src.modulo);
@@ -392,11 +369,11 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
                 g = (old_pixel & 0x00FF00);
                 b = (old_pixel & 0x0000FF);
                 bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)>>8);
-                    r = r+evaluer[bw];
+                    r = r+mfd->rvalue[2][bw];
                     if (r<65536) r=0; else if (r>16711680) r=16711680;
-                    g = g+evalueg[bw];
+                    g = g+mfd->gvalue[2][bw];
                     if (g<256) g=0; else if (g>65280) g=65280;
-                    b = b+evalueb[bw];
+                    b = b+mfd->bvalue[bw];
                     if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
@@ -411,16 +388,16 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = ((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                med_pixel = mfd->rvalue[1][(old_pixel & 0xFF0000)>>16] + mfd->gvalue[1][(old_pixel & 0x00FF00)>>8] + mfd->ovalue[3][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
                 r = (med_pixel & 0xFF0000);
                 g = (med_pixel & 0x00FF00);
                 b = (med_pixel & 0x0000FF);
                 bw = int((77 * (r >> 16) + 150 * (g >> 8) + 29 * b)>>8);
-                    r = r+evaluer[bw];
+                    r = r+mfd->rvalue[2][bw];
                     if (r<65536) r=0; else if (r>16711680) r=16711680;
-                    g = g+evalueg[bw];
+                    g = g+mfd->gvalue[2][bw];
                     if (g<256) g=0; else if (g>65280) g=65280;
-                    b = b+evalueb[bw];
+                    b = b+mfd->bvalue[bw];
                     if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
                 *dst++ = new_pixel;
@@ -634,14 +611,6 @@ int RunProc(const FilterActivation *fa, const FilterFunctions *ff) {
 
 int EndProc(FilterActivation *fa, const FilterFunctions *ff) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-
-    delete[] mfd->evaluer; mfd->evaluer = NULL;
-    delete[] mfd->evalueg; mfd->evalueg = NULL;
-    delete[] mfd->evalueb; mfd->evalueb = NULL;
-    delete[] mfd->cvaluer; mfd->cvaluer = NULL;
-    delete[] mfd->cvalueg; mfd->cvalueg = NULL;
-    delete[] mfd->cvalueb; mfd->cvalueb = NULL;
-
     return 0;
 }
 
@@ -655,7 +624,7 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
 
     mfd->Labprecalc = 0;
     for (i=0; i<5; i++){
-        mfd->drwmode[i]=1;
+        mfd->drwmode[i]=2;
         mfd->poic[i]=2;
         mfd->drwpoint[i][0][0]=0;
         mfd->drwpoint[i][0][1]=0;
@@ -668,11 +637,18 @@ int InitProc(FilterActivation *fa, const FilterFunctions *ff) {
     mfd->offset = 0;
     mfd->psel=false;
     mfd->cp=0;
-    mfd->gamma=1000;
+    _snprintf(mfd->gamma, 10, "%.3lf",1.000);
     for (i=0; i<256; i++) {
         mfd->ovalue[0][i] = i;
+        mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+        mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+        mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+        mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+        mfd->bvalue[i]=(mfd->ovalue[0][i]-i);
         mfd->ovalue[1][i] = i;
+        mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
         mfd->ovalue[2][i] = i;
+        mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
         mfd->ovalue[3][i] = i;
         mfd->ovalue[4][i] = i;
     }
@@ -698,16 +674,37 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     signed int b;
     int max;
     int min;
-    TCHAR tmp[10];
+    int mode;
+    int spacemode;
+    HWND hWnd;
+    HCURSOR hCursor;
+    HWND hWndBtn1 = NULL;
+    HWND hWndBtn2 = NULL;
+    HWND hWndBtn3 = NULL;
+    HWND hWndBtn4 = NULL;
+    HICON hIco1;
+    HICON hIco2;
+    HICON hIco3;
+    HICON hIco4;
 
     switch(msg) {
         case WM_INITDIALOG:
             SetWindowLong(hdlg, DWL_USER, lParam);
             mfd = (MyFilterData *)lParam;
-            HWND hWnd;
 
-            SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
+            hWndBtn1 = GetDlgItem(hdlg, IDC_RADIOPM);
+            hIco1 = LoadIcon(hInst, (LPCSTR)IDI_ICON1);
+            SendMessage(hWndBtn1, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIco1);
+            hWndBtn2 = GetDlgItem(hdlg, IDC_RADIOLM);
+            hIco2 = LoadIcon(hInst, (LPCSTR)IDI_ICON2);
+            SendMessage(hWndBtn2, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIco2);
+            hWndBtn3 = GetDlgItem(hdlg, IDC_RADIOSM);
+            hIco3 = LoadIcon(hInst, (LPCSTR)IDI_ICON3);
+            SendMessage(hWndBtn3, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIco3);
+            hWndBtn4 = GetDlgItem(hdlg, IDC_RADIOGM);
+            hIco4 = LoadIcon(hInst, (LPCSTR)IDI_ICON4);
+            SendMessage(hWndBtn4, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIco4);
+
             hWnd = GetDlgItem(hdlg, IDC_SPACE);
             for(i=0; i<5; i++)
             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)space_names[i]);}
@@ -786,21 +783,31 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ShowWindow (hWnd, SW_HIDE);
                 SendMessage (hWnd,BM_SETCHECK,0,0L);
             }
+            hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
+            SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
+            mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
             if (mfd->drwmode[mfd->channel_mode]!=0){
                 SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                 SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                 if (mfd->drwmode[mfd->channel_mode]==3){
-                    _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_SHOW);
-                    SetWindowText(hWnd, tmp);
+                    SetWindowText(hWnd, mfd->gamma);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
                     ShowWindow(hWnd, SW_SHOW);}
             }
-            hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
-            SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
-            mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+            else {
+                SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
+                hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                ShowWindow(hWnd, SW_HIDE);
+                hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                ShowWindow(hWnd, SW_HIDE);
+                hWnd = GetDlgItem(hdlg, IDC_POINT);
+                ShowWindow(hWnd, SW_HIDE);
+                hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                ShowWindow(hWnd, SW_HIDE);}
             switch (mfd->process)
             {
                 case PROCESS_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
@@ -815,19 +822,48 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case PROCESS_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 3; break;
                 case PROCESS_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 4; break;
             }
+            switch  (mfd->drwmode[mfd->channel_mode]) {
+                case 0:
+                    CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                    break;
+                case 1:
+                    CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                    break;
+                case 2:
+                    CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                    break;
+                case 3:
+                    CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                    CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
+                    break;
+            }
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
             return TRUE;
-
         case WM_PAINT:
             {   if (mfd->Labprecalc==0 && mfd->process==8) { // build up the LUT for the Lab process if it is not precalculated already
+                    hCursor = LoadCursor(NULL, IDC_WAIT);
+                    SetCursor (hCursor);
                     PreCalcLut();
-                    mfd->Labprecalc = 1;}
+                    mfd->Labprecalc = 1;
+                    hCursor = LoadCursor(NULL, IDC_ARROW);
+                    SetCursor (hCursor);}
 
                 PAINTSTRUCT ps;
 
                 BeginPaint(hdlg, &ps);
                 EndPaint(hdlg, &ps);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                 GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
             }
             return TRUE;
@@ -841,7 +877,21 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             else {ay = 255-lParam;}
             if (mfd->drwmode[mfd->channel_mode]==0){
                 mfd->ovalue[mfd->channel_mode][ax]=(ay);
-
+                switch (mfd->channel_mode) { //for faster RGB modes
+                    case 0:
+                            mfd->rvalue[0][ax]=(mfd->ovalue[0][ax]<<16);
+                            mfd->rvalue[2][ax]=(mfd->ovalue[0][ax]-ax)<<16;
+                            mfd->gvalue[0][ax]=(mfd->ovalue[0][ax]<<8);
+                            mfd->gvalue[2][ax]=(mfd->ovalue[0][ax]-ax)<<8;
+                            mfd->bvalue[ax]=mfd->ovalue[0][ax]-ax;
+                    break;
+                    case 1:
+                        mfd->rvalue[1][ax]=(mfd->ovalue[1][ax]<<16);
+                    break;
+                    case 2:
+                        mfd->gvalue[1][ax]=(mfd->ovalue[2][ax]<<8);
+                    break;
+                }
                 if (ax > mfd->xl)
                 {
                     if ((ax-(mfd->xl))>1 && (ax-(mfd->xl))<256 && (mfd->xl)<256 && (mfd->yl)<256)
@@ -852,6 +902,21 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                             for (cx=((mfd->xl)+1);cx<ax;cx++)
                             {
                                 mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+(((cx-(mfd->xl))*cy)>>8));
+                                switch (mfd->channel_mode) { //for faster RGB modes
+                                    case 0:
+                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
+                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
+                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
+                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
+                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
+                                    break;
+                                    case 1:
+                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
+                                    break;
+                                    case 2:
+                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
+                                    break;
+                                }
                             }
                         }
                         else
@@ -860,6 +925,21 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                             for (cx=((mfd->xl)+1);cx<ax;cx++)
                             {
                                 mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-(((cx-(mfd->xl))*cy)>>8));
+                                switch (mfd->channel_mode) { //for faster RGB modes
+                                    case 0:
+                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
+                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
+                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
+                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
+                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
+                                    break;
+                                    case 1:
+                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
+                                    break;
+                                    case 2:
+                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -874,6 +954,21 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                             for (cx=((mfd->xl)-1);cx>ax;cx--)
                             {
                                 mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+((((mfd->xl)-cx)*cy)>>8));
+                                switch (mfd->channel_mode) { //for faster RGB modes
+                                    case 0:
+                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
+                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
+                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
+                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
+                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
+                                    break;
+                                    case 1:
+                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
+                                    break;
+                                    case 2:
+                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
+                                    break;
+                                }
                             }
                         }
                         else
@@ -882,12 +977,28 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                             for (cx=((mfd->xl)-1);cx>ax;cx--)
                             {
                                 mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-((((mfd->xl)-cx)*cy)>>8));
+                                switch (mfd->channel_mode) { //for faster RGB modes
+                                    case 0:
+                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
+                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
+                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
+                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
+                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
+                                    break;
+                                    case 1:
+                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
+                                    break;
+                                    case 2:
+                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
+                                    break;
+                                }
                             }
                         }
                     }
                 }
                 mfd->xl = ax;
                 mfd->yl = ay;
+                mfd->value=ax;
             }
             else {
                 if (mfd->psel==true){
@@ -931,19 +1042,17 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 CalcCurve(mfd);
                 if (mfd->drwmode[mfd->channel_mode]==3){
-                    _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    SetWindowText(hWnd, tmp);}
-
+                    SetWindowText(hWnd, mfd->gamma);}
+                mfd->value=mfd->drwpoint[mfd->channel_mode][mfd->cp][0];
             }
-            mfd->value=ax;
-            SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
+            SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, ay, FALSE);
-            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-            mfd->ifp->RedoSystem();
+            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+            mfd->ifp->RedoFrame();
             break;
 
-        case WM_USER + 101:
+        case WM_USER + 101: //left mouse button pressed
             if (wParam > 255) {ax = 255;}
             else if (wParam <= 255) {ax = wParam;}
             if (lParam > 255) {ay = 0;}
@@ -957,20 +1066,29 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             else {
                 mfd->psel=false;
                 stp=false;
-                for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){
+                for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){  // select point
                     if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<31 && stp==false){
-                        if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
-                        mfd->cp=i;
-                        mfd->psel=true;
-                        stp=true;
-                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);}
+                        if (i<mfd->poic[mfd->channel_mode]-1){
+                            if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
+                            mfd->cp=i;
+                            mfd->psel=true;
+                            stp=true;
+                            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
+                        }
+                        else {
+                            mfd->cp=i;
+                            mfd->psel=true;
+                            stp=true;
+                            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                     }
                 }
-                if (mfd->drwmode[mfd->channel_mode]!=3){
+                if (mfd->drwmode[mfd->channel_mode]!=3){ // add point
                     stp=false;
                     ptp=false;
                     if (mfd->psel==false && mfd->poic[mfd->channel_mode]<16)
-                        for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){
+                        for (i=1; i<(mfd->poic[mfd->channel_mode]);i++){
                             if (mfd->drwpoint[mfd->channel_mode][i][0]>ax && ptp==false && mfd->drwpoint[mfd->channel_mode][0][0]<ax){
                                 ptp=true;
                                 if (ax>mfd->drwpoint[mfd->channel_mode][i-1][0]+11 && ax<mfd->drwpoint[mfd->channel_mode][i][0]-11){
@@ -987,39 +1105,51 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                             mfd->psel=true;
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                             CalcCurve(mfd);
-                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                            mfd->ifp->RedoSystem();}
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                            mfd->ifp->RedoFrame();
+                            }
                     }
                 SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                 }
             break;
 
-        case WM_USER + 102:
+        case WM_USER + 102: //left mouse button releases
             mfd->psel=false;
             break;
 
-        case WM_USER + 103:
+        case WM_USER + 103: //right mouse button pressed
             if (mfd->drwmode[mfd->channel_mode]==0){
                 if (wParam > 255) {ax = 255;}
                 else if (wParam <= 255) {ax = wParam;}
                 mfd->value=ax;
                 SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
-            else if ((mfd->drwmode[mfd->channel_mode]==1 || mfd->drwmode[mfd->channel_mode]==2) && mfd->poic[mfd->channel_mode]>2){
+            else if ((mfd->drwmode[mfd->channel_mode]==1 || mfd->drwmode[mfd->channel_mode]==2) && mfd->poic[mfd->channel_mode]>2){ // delete point
+                stp=false;
+                ptp=false;
                 if (wParam > 255) {ax = 255;}
                 else if (wParam <= 255) {ax = wParam;}
                 if (lParam > 255) {ay = 0;}
                 else if (lParam <= 255) {ay = 255-lParam;}
                 for (i=1; i<(mfd->poic[mfd->channel_mode])-1;i++){
-                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11){
-                        for (j=i; j<=(mfd->poic[mfd->channel_mode]-1);j++){
-                            mfd->drwpoint[mfd->channel_mode][j][0]=mfd->drwpoint[mfd->channel_mode][j+1][0];
-                            mfd->drwpoint[mfd->channel_mode][j][1]=mfd->drwpoint[mfd->channel_mode][j+1][1];}
-                        mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]--;
-                        CalcCurve(mfd);
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                        mfd->ifp->RedoSystem();}
+                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11 && stp==false){
+                        if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
+                            mfd->cp=i;
+                            for (j=i; j<=(mfd->poic[mfd->channel_mode]-1);j++){
+                                mfd->drwpoint[mfd->channel_mode][j][0]=mfd->drwpoint[mfd->channel_mode][j+1][0];
+                                mfd->drwpoint[mfd->channel_mode][j][1]=mfd->drwpoint[mfd->channel_mode][j+1][1];}
+                            mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]--;
+                            mfd->cp--;
+                            stp=true;
+                            CalcCurve(mfd);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
+                            mfd->ifp->RedoFrame();
+                        }
+                    }
                 }
             }
             break;
@@ -1055,7 +1185,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0Curves (*.acv)\0*.acv\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0All Files\0*.*\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -1076,9 +1206,75 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (mfd->filename[0] != 0)
                 {
                     ImportCurve (hdlg, mfd);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    mfd->ifp->RedoSystem();
+                    if (mfd->drwmode[mfd->channel_mode]==0) {
+                        hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                        ShowWindow(hWnd, SW_HIDE);
+                        hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                        ShowWindow(hWnd, SW_HIDE);
+                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                        ShowWindow(hWnd, SW_HIDE);
+                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                        ShowWindow(hWnd, SW_HIDE);
+                        hWnd = GetDlgItem(hdlg, IDC_POINT);
+                        ShowWindow(hWnd, SW_HIDE);
+                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                        ShowWindow(hWnd, SW_HIDE);
+                        mfd->value=0;
+                        SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
+                    else {
+                        mfd->cp=0;
+                        SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
+                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                        if (mfd->drwmode[mfd->channel_mode]==3) {
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                            ShowWindow(hWnd, SW_SHOW);
+                            SetWindowText(hWnd, mfd->gamma);
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                            ShowWindow(hWnd, SW_SHOW);}
+                        else {
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                            ShowWindow(hWnd, SW_HIDE);}
+                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                        ShowWindow(hWnd, SW_SHOW);
+                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                        ShowWindow(hWnd, SW_SHOW);
+                        hWnd = GetDlgItem(hdlg, IDC_POINT);
+                        ShowWindow(hWnd, SW_SHOW);
+                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                        ShowWindow(hWnd, SW_SHOW);
+                    }
+                    switch  (mfd->drwmode[mfd->channel_mode]) {
+                        case 0:
+                            CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                            break;
+                        case 1:
+                            CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                            break;
+                        case 2:
+                            CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                            break;
+                        case 3:
+                            CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                            CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
+                            break;
+                    }
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    mfd->ifp->RedoFrame();
                 }
                 break;
                 }
@@ -1091,7 +1287,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Comma Separated Values (*.csv)\0*.csv\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0All Files\0*.*\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -1120,61 +1316,53 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 switch (mfd->space_mode){
                     case 0:
                     mfd->process = PROCESS_RGB;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 1:
                     mfd->process = PROCESS_YUV;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 2:
                     mfd->process = PROCESS_CMYK;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 3:
                     mfd->process = PROCESS_HSV;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 4:
                     mfd->process = PROCESS_LAB;
-                    mfd->ifp->RedoSystem();
                     break;
                 }
+                mfd->ifp->RedoFrame();
             break;
             case IDC_FULL:
                 switch (mfd->space_mode){
                     case 0:
                     mfd->process = PROCESS_FULL;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 1:
                     mfd->process = PROCESS_OFF;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 2:
                     mfd->process = PROCESS_OFF;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 3:
                     mfd->process = PROCESS_OFF;
-                    mfd->ifp->RedoSystem();
                     break;
                     case 4:
                     mfd->process = PROCESS_OFF;
-                    mfd->ifp->RedoSystem();
                     break;
                 }
+                mfd->ifp->RedoFrame();
             break;
             case IDC_RGBW:
                 mfd->process = PROCESS_RGBW;
-                mfd->ifp->RedoSystem();
+                mfd->ifp->RedoFrame();
             break;
             case IDC_FULLW:
                 mfd->process = PROCESS_FULLW;
-                mfd->ifp->RedoSystem();
+                mfd->ifp->RedoFrame();
             break;
             case IDC_OFF:
                 mfd->process = PROCESS_OFF;
-                mfd->ifp->RedoSystem();
+                mfd->ifp->RedoFrame();
             break;
             case IDC_INPUTPLUS:
                 if (mfd->drwmode[mfd->channel_mode]==0){
@@ -1191,11 +1379,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         CalcCurve(mfd);
                         if (mfd->drwmode[mfd->channel_mode]==3){
-                            _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            SetWindowText(hWnd, tmp);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                        mfd->ifp->RedoSystem();}
+                            SetWindowText(hWnd, mfd->gamma);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        mfd->ifp->RedoFrame();
+                    }
                 }
                 break;
             case IDC_INPUTMINUS:
@@ -1213,11 +1401,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         CalcCurve(mfd);
                         if (mfd->drwmode[mfd->channel_mode]==3){
-                            _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            SetWindowText(hWnd, tmp);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                        mfd->ifp->RedoSystem();}
+                            SetWindowText(hWnd, mfd->gamma);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        mfd->ifp->RedoFrame();
+                    }
                 }
 
                 break;
@@ -1225,9 +1413,23 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (mfd->drwmode[mfd->channel_mode]==0){
                     if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255) {
                         mfd->ovalue[mfd->channel_mode][mfd->value]++;
+                        switch (mfd->channel_mode) { //for faster RGB modes
+                            case 0:
+                                    mfd->rvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<16);
+                                    mfd->rvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<16;
+                                    mfd->gvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<8);
+                                    mfd->gvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<8;
+                                    mfd->bvalue[mfd->value]=mfd->ovalue[0][mfd->value]-mfd->value;
+                            break;
+                            case 1:
+                                mfd->rvalue[1][mfd->value]=(mfd->ovalue[1][mfd->value]<<16);
+                            break;
+                            case 2:
+                                mfd->gvalue[1][mfd->value]=(mfd->ovalue[2][mfd->value]<<8);
+                            break;}
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    mfd->ifp->RedoSystem();
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    mfd->ifp->RedoFrame();
                 }
                 else {
                     if (mfd->drwmode[mfd->channel_mode]==3) {
@@ -1246,20 +1448,34 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         CalcCurve(mfd);
                         if (mfd->drwmode[mfd->channel_mode]==3){
-                            _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            SetWindowText(hWnd, tmp);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                        mfd->ifp->RedoSystem();}
+                            SetWindowText(hWnd, mfd->gamma);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        mfd->ifp->RedoFrame();
+                    }
                 }
                 break;
             case IDC_OUTPUTMINUS:
                 if (mfd->drwmode[mfd->channel_mode]==0){
                     if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0) {
                         mfd->ovalue[mfd->channel_mode][mfd->value]--;
+                        switch (mfd->channel_mode) { //for faster RGB modes
+                            case 0:
+                                    mfd->rvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<16);
+                                    mfd->rvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<16;
+                                    mfd->gvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<8);
+                                    mfd->gvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<8;
+                                    mfd->bvalue[mfd->value]=mfd->ovalue[0][mfd->value]-mfd->value;
+                            break;
+                            case 1:
+                                mfd->rvalue[1][mfd->value]=(mfd->ovalue[1][mfd->value]<<16);
+                            break;
+                            case 2:
+                                mfd->gvalue[1][mfd->value]=(mfd->ovalue[2][mfd->value]<<8);
+                            break;}
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    mfd->ifp->RedoSystem();
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    mfd->ifp->RedoFrame();
                 }
                 else {
                     if (mfd->drwmode[mfd->channel_mode]==3) {
@@ -1278,11 +1494,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         CalcCurve(mfd);
                         if (mfd->drwmode[mfd->channel_mode]==3){
-                            _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            SetWindowText(hWnd, tmp);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                        mfd->ifp->RedoSystem();}
+                            SetWindowText(hWnd, mfd->gamma);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        mfd->ifp->RedoFrame();
+                    }
                 }
                 break;
             case IDC_POINTPLUS:
@@ -1291,7 +1507,8 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         mfd->cp++;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);}
+                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                 }
                 break;
             case IDC_POINTMINUS:
@@ -1300,13 +1517,30 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         mfd->cp--;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);}
+                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                 }
                 break;
             case IDC_RESET: // reset the curve
                 switch (mfd->drwmode[mfd->channel_mode]){
                     case 0:
-                        for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = i;}
+                        for (i=0; i<256; i++) {
+                            mfd->ovalue[mfd->channel_mode][i] = i;
+                            switch (mfd->channel_mode) { //for faster RGB modes
+                            case 0:
+                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+                            break;
+                            case 1:
+                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
+                            break;
+                            case 2:
+                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
+                            break;}
+                        }
                         mfd->value=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
@@ -1348,13 +1582,12 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                        SetWindowText(hWnd, tmp);
+                        SetWindowText(hWnd, mfd->gamma);
                         break;
                     }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                mfd->ifp->RedoSystem();
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                mfd->ifp->RedoFrame();
                 break;
             case IDC_SMOOTH:  // smooth the curve
                 if (mfd->drwmode[mfd->channel_mode] == 0){
@@ -1383,16 +1616,47 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                         else {inv[i]=(delta[i]*25+delta[i+1]*50+delta[i+2]*25)/100;}
                     }
                     for (i=255; i>0; i--) {delta[i]=inv[i];}
-                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;}
+                    for (i=0; i<256; i++) {
+                        mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;
+                        switch (mfd->channel_mode) { //for faster RGB modes
+                            case 0:
+                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+                            break;
+                            case 1:
+                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
+                            break;
+                            case 2:
+                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
+                            break;}
+                    }
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    mfd->ifp->RedoSystem();
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    mfd->ifp->RedoFrame();
                 }
                 break;
             case IDC_INVERTX:
                 if (mfd->drwmode[mfd->channel_mode] == 0){
                     for (i=0; i<256; i++) {inv[255-i] = mfd->ovalue[mfd->channel_mode][i];}
-                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = inv[i];}
+                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = inv[i];
+                    switch (mfd->channel_mode) { //for faster RGB modes
+                            case 0:
+                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+                            break;
+                            case 1:
+                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
+                            break;
+                            case 2:
+                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
+                            break;}
+                    }
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                 }
                 else {
@@ -1407,18 +1671,17 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                     if (mfd->drwmode[mfd->channel_mode] == 3){
-                        _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                        SetWindowText(hWnd, tmp);}
+                        SetWindowText(hWnd, mfd->gamma);}
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                mfd->ifp->RedoSystem();
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                mfd->ifp->RedoFrame();
                 break;
-            case IDC_BUTTONPM:
+            case IDC_RADIOPM:
                 if (mfd->drwmode[mfd->channel_mode]!=0){
                     mfd->drwmode[mfd->channel_mode]=0;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)],mfd->cp);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_HIDE);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
@@ -1434,11 +1697,12 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     mfd->value=0;
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    mfd->ifp->RedoSystem();}
+                    mfd->ifp->RedoFrame();
+                }
                 break;
-            case IDC_BUTTONLM:
+            case IDC_RADIOLM:
                 if (mfd->drwmode[mfd->channel_mode]!=1){
-                    if (mfd->drwmode[mfd->channel_mode]!=2) {
+                    if (mfd->drwmode[mfd->channel_mode]==0) {
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1450,7 +1714,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_HIDE);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
@@ -1463,12 +1727,12 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     ShowWindow(hWnd, SW_SHOW);
                     hWnd = GetDlgItem(hdlg, IDC_POINTNO);
                     ShowWindow(hWnd, SW_SHOW);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    mfd->ifp->RedoSystem();}
+                    mfd->ifp->RedoFrame();
+                }
                 break;
-            case IDC_BUTTONSM:
+            case IDC_RADIOSM:
                 if (mfd->drwmode[mfd->channel_mode]!=2){
-                    if (mfd->drwmode[mfd->channel_mode]!=1) {
+                    if (mfd->drwmode[mfd->channel_mode]==0) {
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1480,7 +1744,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_HIDE);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
@@ -1493,29 +1757,29 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     ShowWindow(hWnd, SW_SHOW);
                     hWnd = GetDlgItem(hdlg, IDC_POINTNO);
                     ShowWindow(hWnd, SW_SHOW);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    mfd->ifp->RedoSystem();}
+                    mfd->ifp->RedoFrame();
+                }
                 break;
-            case IDC_BUTTONGM:
+            case IDC_RADIOGM:
                 if (mfd->drwmode[mfd->channel_mode]!=3){
+                    if (mfd->drwmode[mfd->channel_mode]==0 || mfd->poic[mfd->channel_mode]!=3) {
+                        mfd->poic[mfd->channel_mode]=3;
+                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
+                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
+                        mfd->drwpoint[mfd->channel_mode][1][0]=128;
+                        mfd->drwpoint[mfd->channel_mode][1][1]=128;
+                        mfd->drwpoint[mfd->channel_mode][2][0]=255;
+                        mfd->drwpoint[mfd->channel_mode][2][1]=255;
+                        mfd->cp=0;}
                     mfd->drwmode[mfd->channel_mode]=3;
-                    mfd->poic[mfd->channel_mode]=3;
-                    mfd->drwpoint[mfd->channel_mode][0][0]=0;
-                    mfd->drwpoint[mfd->channel_mode][0][1]=0;
-                    mfd->drwpoint[mfd->channel_mode][1][0]=128;
-                    mfd->drwpoint[mfd->channel_mode][1][1]=128;
-                    mfd->drwpoint[mfd->channel_mode][2][0]=255;
-                    mfd->drwpoint[mfd->channel_mode][2][1]=255;
                     CalcCurve(mfd);
-                    mfd->cp=0;
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_SHOW);
-                    SetWindowText(hWnd, tmp);
+                    SetWindowText(hWnd, mfd->gamma);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
                     ShowWindow(hWnd, SW_SHOW);
                     hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
@@ -1526,160 +1790,259 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     ShowWindow(hWnd, SW_SHOW);
                     hWnd = GetDlgItem(hdlg, IDC_POINTNO);
                     ShowWindow(hWnd, SW_SHOW);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    mfd->ifp->RedoSystem();}
+                    mfd->ifp->RedoFrame();
+                }
                 break;
             case IDC_SPACE:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
-                    mfd->space_mode = SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0);
-                    hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
-                    SendMessage(hWnd, CB_RESETCONTENT, 0, 0);
-                    mfd->laboff = 0;
-                    switch (mfd->space_mode){
-                    case 0:
-                        for(i=0; i<4; i++)
-                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)RGBchannel_names[i]);}
-                        mfd->channel_mode = 0;
-                        mfd->offset = 0;
-                        hWnd = GetDlgItem(hdlg, IDC_RGB);
-                        SetWindowText (hWnd,"RGB only");
-                        hWnd = GetDlgItem(hdlg, IDC_FULL);
-                        SetWindowText (hWnd,"RGB + R/G/B");
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_RGBW);
-                        SetWindowText (hWnd,"RGB weighted");
-                        ShowWindow (hWnd, SW_SHOWNORMAL);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_FULLW);
-                        SetWindowText (hWnd,"RGB weighted + R/G/B");
-                        ShowWindow (hWnd, SW_SHOWNORMAL);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_OFF);
-                        SetWindowText (hWnd,"no processing");
-                        ShowWindow (hWnd, SW_SHOWNORMAL);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_RGB;
-                        break;
-                    case 1:
-                        for(i=0; i<3; i++)
-                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)YUVchannel_names[i]);}
-                        mfd->channel_mode = 0;
-                        mfd->offset = 1;
-                        hWnd = GetDlgItem(hdlg, IDC_RGB);
-                        SetWindowText (hWnd,"Y/U/V");
-                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_YUV;
-                        break;
-                    case 2:
-                        for(i=0; i<4; i++)
-                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)CMYKchannel_names[i]);}
-                        mfd->channel_mode = 0;
-                        mfd->offset = 1;
-                        hWnd = GetDlgItem(hdlg, IDC_RGB);
-                        SetWindowText (hWnd,"C/M/Y/K");
-                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_CMYK;
-                        break;
-                    case 3:
-                        for(i=0; i<3; i++)
-                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)HSVchannel_names[i]);}
-                        mfd->channel_mode = 0;
-                        mfd->offset = 1;
-                        hWnd = GetDlgItem(hdlg, IDC_RGB);
-                        SetWindowText (hWnd,"H/S/V");
-                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_HSV;
-                        break;
-                    case 4:
-                        for(i=0; i<3; i++)
-                        {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
-                        mfd->channel_mode = 0;
-                        mfd->offset = 1;
-                        hWnd = GetDlgItem(hdlg, IDC_RGB);
-                        SetWindowText (hWnd,"L/a/b");
-                        if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
-                        if (mfd->Labprecalc==0) {   // build up the LUT for the Lab process if it is not precalculated already
-                            PreCalcLut();
-                            mfd->Labprecalc = 1;}
-                        break;
+                    spacemode = SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0);
+                    if (mfd->space_mode != spacemode) {
+                        mfd->space_mode=spacemode;
+                        hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
+                        SendMessage(hWnd, CB_RESETCONTENT, 0, 0);
+                        mfd->laboff = 0;
+                        switch (mfd->space_mode){
+                        case 0:
+                            for(i=0; i<4; i++)
+                            {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)RGBchannel_names[i]);}
+                            mfd->channel_mode = 0;
+                            mfd->offset = 0;
+                            hWnd = GetDlgItem(hdlg, IDC_RGB);
+                            SetWindowText (hWnd,"RGB only");
+                            hWnd = GetDlgItem(hdlg, IDC_FULL);
+                            SetWindowText (hWnd,"RGB + R/G/B");
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_RGBW);
+                            SetWindowText (hWnd,"RGB weighted");
+                            ShowWindow (hWnd, SW_SHOWNORMAL);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_FULLW);
+                            SetWindowText (hWnd,"RGB weighted + R/G/B");
+                            ShowWindow (hWnd, SW_SHOWNORMAL);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_OFF);
+                            SetWindowText (hWnd,"no processing");
+                            ShowWindow (hWnd, SW_SHOWNORMAL);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_RGB;
+                            break;
+                        case 1:
+                            for(i=0; i<3; i++)
+                            {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)YUVchannel_names[i]);}
+                            mfd->channel_mode = 0;
+                            mfd->offset = 1;
+                            hWnd = GetDlgItem(hdlg, IDC_RGB);
+                            SetWindowText (hWnd,"Y/U/V");
+                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_YUV;
+                            break;
+                        case 2:
+                            for(i=0; i<4; i++)
+                            {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)CMYKchannel_names[i]);}
+                            mfd->channel_mode = 0;
+                            mfd->offset = 1;
+                            hWnd = GetDlgItem(hdlg, IDC_RGB);
+                            SetWindowText (hWnd,"C/M/Y/K");
+                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_CMYK;
+                            break;
+                        case 3:
+                            for(i=0; i<3; i++)
+                            {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)HSVchannel_names[i]);}
+                            mfd->channel_mode = 0;
+                            mfd->offset = 1;
+                            hWnd = GetDlgItem(hdlg, IDC_RGB);
+                            SetWindowText (hWnd,"H/S/V");
+                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_HSV;
+                            break;
+                        case 4:
+                            for(i=0; i<3; i++)
+                            {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
+                            mfd->channel_mode = 0;
+                            mfd->offset = 1;
+                            hWnd = GetDlgItem(hdlg, IDC_RGB);
+                            SetWindowText (hWnd,"L/a/b");
+                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
+                            if (mfd->Labprecalc==0) { // build up the LUT for the Lab process if it is not precalculated already
+                                hCursor = LoadCursor(NULL, IDC_WAIT);
+                                SetCursor (hCursor);
+                                PreCalcLut();
+                                mfd->Labprecalc = 1;
+                                hCursor = LoadCursor(NULL, IDC_ARROW);
+                                SetCursor (hCursor);}
+                            break;
+                        }
+                        if (mfd->space_mode != 0) {
+                            hWnd = GetDlgItem(hdlg, IDC_FULL);
+                            SetWindowText (hWnd,"no processing");
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_RGBW);
+                            ShowWindow (hWnd, SW_HIDE);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_FULLW);
+                            ShowWindow (hWnd, SW_HIDE);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            hWnd = GetDlgItem(hdlg, IDC_OFF);
+                            ShowWindow (hWnd, SW_HIDE);
+                            SendMessage (hWnd,BM_SETCHECK,0,0L);
+                            if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
+                            else CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
+                        }
+                        else {
+                            if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
+                            else CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED);
+                        }
+                        hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
+                        SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
+                        mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                        if (mfd->drwmode[mfd->channel_mode]!=3){
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                            ShowWindow(hWnd, SW_HIDE);}
+                        if (mfd->drwmode[mfd->channel_mode]==0){
+                            mfd->value=0;
+                            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINT);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                            ShowWindow(hWnd, SW_HIDE);}
+                        else {
+                            CalcCurve(mfd);
+                            mfd->cp=0;
+                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINT);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                            ShowWindow(hWnd, SW_SHOW);
+                            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
+                            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                            if (mfd->drwmode[mfd->channel_mode]==3){
+                                hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                                ShowWindow(hWnd, SW_SHOW);
+                                SetWindowText(hWnd, mfd->gamma);
+                                hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                                ShowWindow(hWnd, SW_SHOW);}
+                        }
+                        switch  (mfd->drwmode[mfd->channel_mode]) {
+                            case 0:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 1:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 2:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 3:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
+                                break;
+                            }
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
+                        mfd->ifp->RedoFrame();
                     }
-                    if (mfd->space_mode != 0) {
-                        hWnd = GetDlgItem(hdlg, IDC_FULL);
-                        SetWindowText (hWnd,"no processing");
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_RGBW);
-                        ShowWindow (hWnd, SW_HIDE);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_FULLW);
-                        ShowWindow (hWnd, SW_HIDE);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        hWnd = GetDlgItem(hdlg, IDC_OFF);
-                        ShowWindow (hWnd, SW_HIDE);
-                        SendMessage (hWnd,BM_SETCHECK,0,0L);
-                        if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
-                        else CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
-                    }
-                    else {
-                        if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
-                        else CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED);
-                    }
-                    hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
-                    SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
-                    mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
-                    mfd->ifp->RedoSystem();
                 }
                 return TRUE;
             case IDC_CHANNEL:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
-                    mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
-                    if (mfd->space_mode == 4) {
-                        if (mfd->channel_mode == 2) {mfd->laboff = -9;}
-                        else if (mfd->channel_mode == 3) {mfd->laboff = 8;}
+                    mode=SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+                    if (mode != mfd->channel_mode) {
+                        mfd->channel_mode = mode;
+                        if (mfd->space_mode == 4) {
+                            if (mfd->channel_mode == 2) {mfd->laboff = -9;}
+                            else if (mfd->channel_mode == 3) {mfd->laboff = 8;}
+                            else {mfd->laboff = 0;}
+                        }
                         else {mfd->laboff = 0;}
-                    }
-                    else {mfd->laboff = 0;}
-                    if (mfd->drwmode[mfd->channel_mode]!=3){
-                        hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                        ShowWindow(hWnd, SW_HIDE);}
-                    if (mfd->drwmode[mfd->channel_mode]==0){
-                        mfd->value=0;
-                        SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINT);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                        ShowWindow(hWnd, SW_HIDE);}
-                    else {
-                        CalcCurve(mfd);
-                        mfd->cp=0;
-                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINT);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                        ShowWindow(hWnd, SW_SHOW);
-                        SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                        SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        if (mfd->drwmode[mfd->channel_mode]==3){
-                            _snprintf(tmp, 10, "%.3lf",float(mfd->gamma)/1000);
+                        if (mfd->drwmode[mfd->channel_mode]!=3){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            ShowWindow(hWnd, SW_SHOW);
-                            SetWindowText(hWnd, tmp);
+                            ShowWindow(hWnd, SW_HIDE);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                            ShowWindow(hWnd, SW_SHOW);}
+                            ShowWindow(hWnd, SW_HIDE);}
+                        if (mfd->drwmode[mfd->channel_mode]==0){
+                            mfd->value=0;
+                            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINT);
+                            ShowWindow(hWnd, SW_HIDE);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                            ShowWindow(hWnd, SW_HIDE);}
+                        else {
+                            CalcCurve(mfd);
+                            mfd->cp=0;
+                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINT);
+                            ShowWindow(hWnd, SW_SHOW);
+                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+                            ShowWindow(hWnd, SW_SHOW);
+                            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
+                            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+                            if (mfd->drwmode[mfd->channel_mode]==3){
+                                hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+                                ShowWindow(hWnd, SW_SHOW);
+                                SetWindowText(hWnd, mfd->gamma);
+                                hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+                                ShowWindow(hWnd, SW_SHOW);}
+                        }
+                        switch  (mfd->drwmode[mfd->channel_mode]) {
+                            case 0:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 1:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 2:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
+                                break;
+                            case 3:
+                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
+                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
+                                break;
+                        }
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
+                        mfd->ifp->RedoFrame();
                     }
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)]);
-                    GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
-                    mfd->ifp->RedoSystem();
                 }
                 return TRUE;
             }
@@ -1693,6 +2056,7 @@ int ConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd) {
     MyFilterData mfd_old = *mfd;
     int ret;
 
+    hInst = fa->filter->module->hInstModule;
     mfd->ifp = fa->ifp;
     if (DialogBoxParam(fa->filter->module->hInstModule,
             MAKEINTRESOURCE(IDD_FILTER), hwnd,
@@ -1720,16 +2084,61 @@ void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *argv, int
     int i;
     int j;
     int t;
+    int cc;
+    int cnt;
+    bool nf;
     const char *tmp;
+    nf = false;
 
     mfd->process = argv[0].asInt();
-
     tmp = *argv[1].asString();
-    for (j=0; j<5; j++) {
+    for (j=0; j<5; j++) { //read raw curve data
         for (i=(j*256); i<((j+1)*256); i++) {
             sscanf(tmp + 2*i,"%02x", &t);
             mfd->ovalue[j][i-(j*256)] = t;
+            switch (j) { //for faster RGB modes
+                case 0:
+                        mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                        mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                        mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                        mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                        mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+                break;
+                case 1:
+                    mfd->rvalue[1][i-256]=(mfd->ovalue[1][i-256]<<16);
+                break;
+                case 2:
+                    mfd->gvalue[1][i-512]=(mfd->ovalue[2][i-512]<<8);
+                break;}
         }
+    }
+    if (argc>2){ //new format extra data
+        tmp = *argv[2].asString();
+        sscanf(tmp +1,"%01x", &cc);
+        cnt=2;
+        cc=5;
+        for (i=0;i<cc;i++) {
+            sscanf(tmp + cnt,"%01x", &mfd->drwmode[i]);
+            cnt++;}
+        for (i=0;i<cc;i++) {
+            sscanf(tmp + cnt,"%02x", &mfd->poic[i]);
+            cnt=cnt+2;}
+        for (j=0;j<cc;j++) {
+            for (i=0; i<mfd->poic[j];i++){
+                sscanf(tmp + cnt,"%02x", &mfd->drwpoint[j][i][0]);
+                cnt=cnt+2;
+                sscanf(tmp + cnt,"%02x", &mfd->drwpoint[j][i][1]);
+                cnt=cnt+2;}
+        }
+    }
+    else { //add data to old format for compatibility
+        for (i=0;i<5;i++) {
+            mfd->drwmode[i]=0;
+            mfd->poic[i]=2;
+            mfd->drwpoint[i][0][0]=0;
+            mfd->drwpoint[i][0][1]=0;
+            mfd->drwpoint[i][1][0]=255;
+            mfd->drwpoint[i][1][1]=255;}
     }
 }
 
@@ -1741,13 +2150,30 @@ bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, int buf
     tmp = "";
 
     _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
-
     for (j=0; j<5; j++) {
         for (i=0; i<256; i++) {
                 _snprintf(tmp, buflen, "%02x",mfd->ovalue[j][i]);
                 strcat (buf,tmp);
         }
     }
+    strcat (buf, "\",\"");
+    _snprintf(tmp, buflen, "%01x",1);
+    strcat (buf,tmp);
+    _snprintf(tmp, buflen, "%01x",5);
+    strcat (buf,tmp);
+    for (i=0;i<5;i++) {
+        _snprintf(tmp, buflen, "%01x",mfd->drwmode[i]);
+        strcat (buf,tmp);}
+    for (i=0;i<5;i++) {
+        _snprintf(tmp, buflen, "%02x",mfd->poic[i]);
+        strcat (buf,tmp);}
+    for (j=0; j<5;j++) {
+        for (i=0; i<mfd->poic[j]; i++) {
+            _snprintf(tmp, buflen, "%02x",mfd->drwpoint[j][i][0]);
+            strcat (buf,tmp);
+            _snprintf(tmp, buflen, "%02x",mfd->drwpoint[j][i][1]);
+            strcat (buf,tmp);}
+        }
     strcat (buf, "\")");
     return true;
 }
@@ -1767,43 +2193,45 @@ void CalcCurve(MyFilterData *mfd)
     double inc;
     double ofs;
     double ga;
-    float x[16][16];
-    float y[16];
-    float a[16];
-    float b[16];
-    float c[16];
+    double x[16][16];
+    double y[16];
+    double a[16];
+    double b[16];
+    double c[16];
 
+    if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
     switch (mfd->drwmode[mfd->channel_mode]){
         case 1: //linear mode
-            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
             for (c1=0; c1<(mfd->poic[mfd->channel_mode]-1); c1++){
                 div=(mfd->drwpoint[mfd->channel_mode][(c1+1)][0]-mfd->drwpoint[mfd->channel_mode][c1][0]);
                 inc=(mfd->drwpoint[mfd->channel_mode][(c1+1)][1]-mfd->drwpoint[mfd->channel_mode][c1][1])/div;
                 ofs=mfd->drwpoint[mfd->channel_mode][c1][1]-inc*mfd->drwpoint[mfd->channel_mode][c1][0];
                 for (c2=mfd->drwpoint[mfd->channel_mode][c1][0];c2<(mfd->drwpoint[mfd->channel_mode][(c1+1)][0]+1);c2++)
                 {mfd->ovalue[mfd->channel_mode][c2]=int(c2*inc+ofs+0.5);}
-                //if ((c2*inc+ofs)-(mfd->ovalue[mfd->channel_mode][c2])>0.5) {mfd->ovalue[mfd->channel_mode][c2]=mfd->ovalue[mfd->channel_mode][c2]+1;}
             }
-            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
         break;
         case 2: //spline mode
-            b[0]=0; //first b coefficient
-            b[mfd->poic[mfd->channel_mode]-1]=0; //last b coefficient
+            for (i=0;i<16;i++){ //clear tables
+                for (j=0;j<16;j++) {x[i][j]=0;}
+                y[i]=0;
+                a[i]=0;
+                b[i]=0;
+                c[i]=0;}
 
             if (mfd->poic[mfd->channel_mode]>3) { //curve has more than 3 coordinates
                 j=mfd->poic[mfd->channel_mode]-3; //fill the matrix needed to calculate the b coefficients of the cubic functions an*x^3+bn*x^2+cn*x+dn
-                x[0][0]=float(2*(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0]));
-                x[0][1]=float((mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0]));
-                y[0]=3*(float(mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][1][1])/float(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0])-float(mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1])/float(mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0]));
+                x[0][0]=double(2*(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0]));
+                x[0][1]=double((mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0]));
+                y[0]=3*(double(mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][1][1])/double(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0])-double(mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1])/double(mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0]));
                 for (i=1;i<j;i++){
-                    x[i][i-1]=float((mfd->drwpoint[mfd->channel_mode][i+1][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
-                    x[i][i]=float(2*(mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
-                    x[i][i+1]=float((mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i+1][0]));
-                    y[i]=3*(float(mfd->drwpoint[mfd->channel_mode][i+2][1]-mfd->drwpoint[mfd->channel_mode][i+1][1])/float(mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i+1][0])-float(mfd->drwpoint[mfd->channel_mode][i+1][1]-mfd->drwpoint[mfd->channel_mode][i][1])/float(mfd->drwpoint[mfd->channel_mode][i+1][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
+                    x[i][i-1]=double((mfd->drwpoint[mfd->channel_mode][i+1][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
+                    x[i][i]=double(2*(mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
+                    x[i][i+1]=double((mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i+1][0]));
+                    y[i]=3*(double(mfd->drwpoint[mfd->channel_mode][i+2][1]-mfd->drwpoint[mfd->channel_mode][i+1][1])/double(mfd->drwpoint[mfd->channel_mode][i+2][0]-mfd->drwpoint[mfd->channel_mode][i+1][0])-double(mfd->drwpoint[mfd->channel_mode][i+1][1]-mfd->drwpoint[mfd->channel_mode][i][1])/double(mfd->drwpoint[mfd->channel_mode][i+1][0]-mfd->drwpoint[mfd->channel_mode][i][0]));
                 }
-                x[j][j-1]=float(mfd->drwpoint[mfd->channel_mode][j+1][0]-mfd->drwpoint[mfd->channel_mode][j][0]);
-                x[j][j]=float(2*(mfd->drwpoint[mfd->channel_mode][j+2][0]-mfd->drwpoint[mfd->channel_mode][j][0]));
-                y[j]=3*(float(mfd->drwpoint[mfd->channel_mode][j+2][1]-mfd->drwpoint[mfd->channel_mode][j+1][1])/float(mfd->drwpoint[mfd->channel_mode][j+2][0]-mfd->drwpoint[mfd->channel_mode][j+1][0])-float(mfd->drwpoint[mfd->channel_mode][j+1][1]-mfd->drwpoint[mfd->channel_mode][j][1])/float(mfd->drwpoint[mfd->channel_mode][j+1][0]-mfd->drwpoint[mfd->channel_mode][j][0]));
+                x[j][j-1]=double(mfd->drwpoint[mfd->channel_mode][j+1][0]-mfd->drwpoint[mfd->channel_mode][j][0]);
+                x[j][j]=double(2*(mfd->drwpoint[mfd->channel_mode][j+2][0]-mfd->drwpoint[mfd->channel_mode][j][0]));
+                y[j]=3*(double(mfd->drwpoint[mfd->channel_mode][j+2][1]-mfd->drwpoint[mfd->channel_mode][j+1][1])/double(mfd->drwpoint[mfd->channel_mode][j+2][0]-mfd->drwpoint[mfd->channel_mode][j+1][0])-double(mfd->drwpoint[mfd->channel_mode][j+1][1]-mfd->drwpoint[mfd->channel_mode][j][1])/double(mfd->drwpoint[mfd->channel_mode][j+1][0]-mfd->drwpoint[mfd->channel_mode][j][0]));
 
                 for (i=0;i<mfd->poic[mfd->channel_mode]-3;i++) { //resolve the matrix to get the b coefficients
                     div=x[i+1][i]/x[i][i];
@@ -1815,12 +2243,11 @@ void CalcCurve(MyFilterData *mfd)
                 for (i=mfd->poic[mfd->channel_mode]-3;i>0;i--) {b[i]=(y[i-1]-x[i-1][i]*b[i+1])/x[i-1][i-1];} // backward subsitution to get the rest of the the b coefficients
             }
             else if (mfd->poic[mfd->channel_mode]==3) { //curve has 3 coordinates
-                b[1]=3*(float(mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][1][1])/float(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0])-float(mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1])/float(mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0]))/float(2*(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0]));}
+                b[1]=3*(double(mfd->drwpoint[mfd->channel_mode][2][1]-mfd->drwpoint[mfd->channel_mode][1][1])/double(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][1][0])-double(mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1])/double(mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0]))/double(2*(mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0]));}
 
             for (c2=0;c2<(mfd->poic[mfd->channel_mode]-1);c2++){ //get the a and c coefficients
-                a[c2]=(float(b[c2+1]-b[c2])/float(3*(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])));
-                c[c2]=float(mfd->drwpoint[mfd->channel_mode][c2+1][1]-mfd->drwpoint[mfd->channel_mode][c2][1])/float(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])-float(b[c2+1]-b[c2])*float(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])/3-b[c2]*(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0]);}
-            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
+                a[c2]=(double(b[c2+1]-b[c2])/double(3*(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])));
+                c[c2]=double(mfd->drwpoint[mfd->channel_mode][c2+1][1]-mfd->drwpoint[mfd->channel_mode][c2][1])/double(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])-double(b[c2+1]-b[c2])*double(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0])/3-b[c2]*(mfd->drwpoint[mfd->channel_mode][c2+1][0]-mfd->drwpoint[mfd->channel_mode][c2][0]);}
             for (c1=0;c1<(mfd->poic[mfd->channel_mode]-1);c1++){ //calculate the y values of the spline curve
                 for (c2=mfd->drwpoint[mfd->channel_mode][(c1)][0];c2<(mfd->drwpoint[mfd->channel_mode][(c1+1)][0]+1);c2++){
                     vy=int(0.5+a[c1]*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])+b[c1]*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])+c[c1]*(c2-mfd->drwpoint[mfd->channel_mode][c1][0])+mfd->drwpoint[mfd->channel_mode][c1][1]);
@@ -1828,7 +2255,6 @@ void CalcCurve(MyFilterData *mfd)
                     else if (vy<0) {mfd->ovalue[mfd->channel_mode][c2]=0;}
                     else {mfd->ovalue[mfd->channel_mode][c2]=vy;}}
             }
-            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
         break;
         case 3: //gamma mode
             dx=mfd->drwpoint[mfd->channel_mode][2][0]-mfd->drwpoint[mfd->channel_mode][0][0];
@@ -1836,12 +2262,27 @@ void CalcCurve(MyFilterData *mfd)
             dxg=mfd->drwpoint[mfd->channel_mode][1][0]-mfd->drwpoint[mfd->channel_mode][0][0];
             dyg=mfd->drwpoint[mfd->channel_mode][1][1]-mfd->drwpoint[mfd->channel_mode][0][1];
             ga=log(double(dyg)/double(dy))/log(double(dxg)/double(dx));
-            mfd->gamma=int(1000/ga);
-            if (mfd->drwpoint[mfd->channel_mode][0][0]>0) {for (c2=0;c2<mfd->drwpoint[mfd->channel_mode][0][0];c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][0][1];}}
+            _snprintf(mfd->gamma, 10, "%.3lf",(1/ga));
             for (c1=0; c1<dx+1; c1++){
                 mfd->ovalue[mfd->channel_mode][c1+mfd->drwpoint[mfd->channel_mode][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+mfd->drwpoint[mfd->channel_mode][0][1];
             }
-            if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[0])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
+        break;
+    }
+    if (mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0]<255) {for (c2=mfd->drwpoint[mfd->channel_mode][((mfd->poic[mfd->channel_mode])-1)][0];c2<256;c2++){mfd->ovalue[mfd->channel_mode][c2]=mfd->drwpoint[mfd->channel_mode][(mfd->poic[mfd->channel_mode]-1)][1];}}
+    switch (mfd->channel_mode) { //for faster RGB modes
+        case 0:
+            for (i=0;i<256;i++) {
+                mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                mfd->bvalue[i]=mfd->ovalue[0][i]-i;}
+        break;
+        case 1:
+            for (i=0;i<256;i++) {mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);}
+        break;
+        case 2:
+            for (i=0;i<256;i++) {mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);}
         break;
     }
 }
@@ -1926,7 +2367,7 @@ void PreCalcLut()
     }
 }
 
-void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2], int pc)   // draw the curve
+void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2], int pc, int ap)  // draw the curve
 {
     RECT rect;
 
@@ -1935,52 +2376,64 @@ void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2]
     GetClientRect(hWnd, &rect);
     double scaleX;
     double scaleY;
+    char *tmp;
+    tmp = "";
+    int buflen=1000;
 
     int i;
     HDC hdc;
     HPEN hPen;
+    HPEN hPen2;
+    HBRUSH hBrush;
 
     hdc = GetDC(hWnd);
 
-    scaleX = (double)(rect.right - rect.left) / 4.0;
-    scaleY = (double)(rect.bottom - rect.top) / 4.0;
+    scaleX = (double)(rect.right - rect.left-1)/4.0;
+    scaleY = (double)(rect.bottom - rect.top)/4.0;
 
-    SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(0, 0, 0)));
+    SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(70, 70, 70)));
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left + (int)(scaleX * i)+loff, rect.top, NULL);
-        LineTo(hdc, rect.left + (int)(scaleX * i)+loff, rect.bottom - 1);
+        MoveToEx(hdc, rect.left + int(scaleX*i+0.5)+loff, rect.top, NULL);
+        LineTo(hdc, rect.left + int(scaleX*i+0.5)+loff, rect.bottom - 1);
     }
 
-    DeleteObject(SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(0, 0, 0))));
+    DeleteObject(SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(70, 70, 70))));
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left, rect.bottom - (int)(scaleY * i)-loff - 1, NULL);
-        LineTo(hdc, rect.right, rect.bottom - (int)(scaleY * i)-loff - 1);
+        MoveToEx(hdc, rect.left, rect.bottom - int(scaleY*i+0.5)-loff - 1, NULL);
+        LineTo(hdc, rect.right, rect.bottom - int(scaleY*i+0.5)-loff - 1);
     }
 
     DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 0))));
 
-    scaleX = (double)(rect.right - rect.left) / 256.0;
+    scaleX = (double)(rect.right - rect.left-1) / 256.0;
     scaleY = (double)(rect.bottom - rect.top) / 256.0;
 
-    MoveToEx(hdc, rect.left, rect.bottom - (int)(scaleY * (table[0])+1), NULL);
-
+    MoveToEx(hdc, rect.left, rect.bottom - int(scaleY * (table[0])+1), NULL);
     for(i = 0; i < 256; i++)
     {
-        LineTo(hdc, rect.left + (int)((scaleX * (i))), rect.bottom - (int)(scaleY * (table[i])+1));
+        LineTo(hdc, rect.left+int(scaleX*(i)+0.5), rect.bottom-int(scaleY*(table[i])+1.5));
     }
+    LineTo(hdc, rect.left + int(scaleX * (255)), rect.bottom - int(scaleY * (table[255])));
 
-    LineTo(hdc, rect.left + (int)((scaleX * (255))), rect.bottom - (int)(scaleY * (table[255])));
-
-    DeleteObject(hPen);
-
+    DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(0,0,0))));
+    hPen2 = CreatePen(PS_SOLID, 1, RGB(255,0,0));
+    hBrush=CreateSolidBrush(RGB(255, 255, 255));
+    SelectObject(hdc,hBrush);
     if (dmode!=0) {
         for (i=0;i<pc;i++){
-            Rectangle(hdc, rect.left + (int)((scaleX *(dp[i][0]))-3),rect.bottom - (int)((scaleY *(dp[i][1]))-3),rect.left + (int)((scaleX *(dp[i][0]))+3),rect.bottom - (int)((scaleY *(dp[i][1]))+3));}
+            if (i==ap) {SelectObject(hdc,hPen2);
+                Rectangle(hdc, int((rect.left+scaleX *(dp[i][0]))-2), rect.bottom-int((scaleY *(dp[i][1]))-2), rect.left+int((scaleX *(dp[i][0]))+3), rect.bottom-int((scaleY *(dp[i][1]))+3));
+                SelectObject(hdc,hPen);}
+            else {Rectangle(hdc, rect.left+int((scaleX *(dp[i][0]))-2),rect.bottom-int((scaleY *(dp[i][1]))-2),rect.left+int((scaleX *(dp[i][0]))+3),rect.bottom-int((scaleY *(dp[i][1]))+3));}
+        }
     }
+    DeleteObject(hBrush);
+    DeleteObject(hPen);
+    DeleteObject(hPen2);
     ReleaseDC(hWnd, hdc);
 }
 
@@ -2218,191 +2671,33 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
 {
     FILE *pFile;
     int i;
+    int j;
     int stor[1280];
     int temp[1280];
     long lSize;
-    int start;
-    int mark;
+    int beg;
     int cv;
     int count;
-    int csta;
-    int offset;
     int noocur;
-    int cupos;
-    int copos;
     int curpos;
     int cordpos;
     int curposnext;
     int cordcount;
-    int c2;
-    int c3;
-    int c1;
-    double inc;
-    double ofs;
-    double div;
+    int cmtmp;
+    int drwmodtmp;
+    int pictmp;
+    int drwtmp[16][2];
+    bool nrf;
+    int gma;
     curpos = 0;
     cordpos = 7;
     cordcount = 0;
-    cupos=0;
-    copos=0;
+    gma=1;
+    nrf=false;
 
-    mark = 0;
-    start = 10000;
-    csta = 10000;
-    count = 0;
-    offset = 0;
     for (i=0;i<5;i++){mfd->drwmode[i]=0;}
 
-    if (mfd->filter == 2) // *.csv
-    {
-        pFile = fopen (mfd->filename, "r");
-        if (pFile==NULL)
-        {
-            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
-        }
-        else
-        {
-            fseek (pFile , 0 , SEEK_END);
-            lSize = ftell (pFile);
-            rewind (pFile);
-            for(i=0; (i < 1280) && ( feof(pFile) == 0 ); i++ )
-            {
-                fscanf (pFile, "%02X", &stor[i]);
-            }
-            fclose (pFile);
-            lSize = lSize/4;
-        }
-    }
-    else if (mfd->filter == 3 || mfd->filter == 4) // *.crv *.map
-    {
-        pFile = fopen (mfd->filename, "rb");
-        if (pFile==NULL)
-        {
-            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
-        }
-        else
-        {
-            fseek (pFile , 0 , SEEK_END);
-            lSize = ftell (pFile);
-            rewind (pFile);
-            for(i=0; (i <= lSize) && ( feof(pFile) == 0 ); i++ )
-            {
-                cv = fgetc(pFile);
-                if (mark == 5)
-                {
-                    if (i>=start)
-                    {
-                        if (offset+count < 1280)
-                        {
-                            stor[offset+count] = cv;
-                        }
-                        count ++;
-                        if (count > 255)
-                        {
-                            count = 0;
-                            offset = offset + 256;
-                            mark = 0;
-                        }
-
-                    }
-                }
-                if (mark == 4)
-                {
-                    if (i == csta)
-                    {
-                        start = i+2*cv+1;
-                        mark = 5;
-                    }
-                }
-                if (mark == 3)
-                {
-                    if (cv == 0)
-                    {
-                        mark = 4;
-                        csta = i+1;
-                    }
-                    else
-                    {
-                        mark = 0;
-                    }
-                }
-                if (mark == 2)
-                {
-                    if (cv == 0)
-                    {
-                        mark = 3;
-                    }
-                    else
-                    {
-                        mark = 0;
-                    }
-                }
-                if (mark == 1)
-                {
-                    if (cv == 0)
-                    {
-                        mark = 2;
-                    }
-                    else
-                    {
-                        mark = 0;
-                    }
-                }
-                if (mark == 0)
-                {
-                    if (cv == 100)
-                    {
-                        mark = 1;
-                    }
-                }
-            }
-            fclose (pFile);
-        }
-        if (mfd->filter == 4)
-        {
-            for(i=0; (i < 1280);i++)
-            {
-                if (i<1024)
-                {
-                    temp[i+256]=stor[i];
-                }
-                else
-                {
-                    temp[i-1024]=stor[i];
-                }
-            }
-            for(i=0; (i < 1280);i++)
-            {
-                stor[i]=temp[i];
-            }
-        }
-    }
-    else if (mfd->filter == 5) // *.amp Smartvurve hsv
-    {
-        pFile = fopen (mfd->filename, "rb");
-        if (pFile==NULL)
-        {
-            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
-        }
-        else
-        {
-            fseek (pFile , 0 , SEEK_END);
-            lSize = ftell (pFile);
-            rewind (pFile);
-            for(i=0; (i < 768) && ( feof(pFile) == 0 ); i++ )
-            {
-                if (i<256)
-                {stor[i+512] = fgetc(pFile);}
-                if (i>255 && i <512)
-                {stor[i] = fgetc(pFile);}
-                if (i>511)
-                {stor[i-512] = fgetc(pFile);}
-            }
-            fclose (pFile);
-            lSize = 768;
-        }
-    }
-    else if (mfd->filter == 6) // *.acv
+        if (mfd->filter == 2) // *.acv
     {
         pFile = fopen (mfd->filename, "rb");
         if (pFile==NULL)
@@ -2413,7 +2708,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
         {   fseek (pFile , 0 , SEEK_END);
             lSize = ftell (pFile);
             rewind (pFile);
-            for(i=0; (i <= lSize) && ( feof(pFile) == 0 ); i++ ) //read the file and store the coordinates
+            for(i=0; (i < lSize) && ( feof(pFile) == 0 ); i++ ) //read the file and store the coordinates
             {
                 cv = fgetc(pFile);
                 if (i==3) { noocur = cv;
@@ -2439,8 +2734,6 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
                     cordpos=cordpos+4;}
             }
             fclose (pFile);
-            for (i=0;i<5;i++) {mfd->drwmode[i]=1;}
-            lSize = 1280;
             if (noocur<5){ //fill empty curves if acv does contain less than 5 curves
                 for (i=noocur;i<5;i++)
                     {mfd->poic[i]=2;
@@ -2449,18 +2742,140 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
                     mfd->drwpoint[i][1][0]=255;
                     mfd->drwpoint[i][1][1]=255;}
                 noocur=5;}
-            for (c1=0; c1<noocur; c1++){ //generate the curve from the coordinates
-                if (mfd->drwpoint[c1][0][0]>0) {for (c3=0;c3<mfd->drwpoint[c1][0][0];c3++){stor[((256*c1)+c3)]=mfd->drwpoint[c1][0][1];}}
-                for (c2=0; c2<(mfd->poic[c1]-1); c2++){
-                    div=(mfd->drwpoint[c1][(c2+1)][0]-mfd->drwpoint[c1][c2][0]);
-                    inc=(mfd->drwpoint[c1][(c2+1)][1]-mfd->drwpoint[c1][c2][1])/div;
-                    ofs=mfd->drwpoint[c1][c2][1]-inc*mfd->drwpoint[c1][c2][0];
-                    for (c3=mfd->drwpoint[c1][c2][0];c3<(mfd->drwpoint[c1][(c2+1)][0]+1);c3++)
-                    {stor[((256*c1)+c3)]=int(c3*inc+ofs);
-                    if ((c3*inc+ofs)-stor[((256*c1)+c3)]>0.5) {stor[((256*c1)+c3)]=stor[((256*c1)+c3)]+1;}}
-                }
-                if (mfd->drwpoint[c1][(mfd->poic[0]-1)][0]<255) {for (c3=mfd->drwpoint[c1][(mfd->poic[c1]-1)][0];c3<256;c3++){stor[((256*c1)+c3)]=mfd->drwpoint[c1][(mfd->poic[c1]-1)][1];}}
+            mfd->cp=0;
+            cmtmp=mfd->channel_mode;
+            for (i=0;i<5;i++) { // calculate curve values
+                mfd->drwmode[i]=2;
+                mfd->channel_mode=i;
+                CalcCurve(mfd);}
+            mfd->channel_mode=cmtmp;
+            nrf=true;
+        }
+    }
+    if (mfd->filter == 3) { // *.csv
+        pFile = fopen (mfd->filename, "r");
+        if (pFile==NULL) {MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);}
+        else
+        {
+            fseek (pFile , 0 , SEEK_END);
+            lSize = ftell (pFile);
+            rewind (pFile);
+            for(i=0; (i < 1280) && ( feof(pFile) == 0 ); i++ )
+            {
+                fscanf (pFile, "%d", &stor[i]);
             }
+            fclose (pFile);
+            lSize = lSize/4;
+        }
+    }
+    else if (mfd->filter == 4 || mfd->filter == 5) { // *.crv *.map
+        if (mfd->filter == 4) {beg=64;}
+        else {beg=320;}
+        curpos = -1;
+        curposnext = 65530;
+        cordpos = beg+6;
+        pFile = fopen (mfd->filename, "rb");
+        if (pFile==NULL) {MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);}
+        else
+        {   fseek (pFile , 0 , SEEK_END);
+            lSize = ftell (pFile);
+            rewind (pFile);
+            for(i=0; (i < lSize) && ( feof(pFile) == 0 ); i++ )
+            {
+                cv = fgetc(pFile);
+                if (i == beg) {
+                    curpos++;
+                    mfd->drwmode[curpos]=cv;
+                    curposnext = 65530;
+                    if (mfd->drwmode[curpos]==2 || mfd->drwmode[curpos]==0) {mfd->drwmode[curpos]=abs(mfd->drwmode[curpos]-2);
+                    }
+                }
+                if (i == beg+1 && mfd->drwmode[curpos]==3) {gma=cv;}
+                if (i == beg+2 && mfd->drwmode[curpos]==3) {gma=gma+(cv<<8);}
+                if (i == beg+5) {
+                    mfd->poic[curpos]=cv;
+                    cordpos=i+1;
+                    curposnext = i+mfd->poic[curpos]*2+1;
+                    if (curpos<4) {beg=i+mfd->poic[curpos]*2+257;}
+                    cordcount=0;
+                    count=0;
+                    if (mfd->poic[curpos]>16) {mfd->poic[curpos]=16;} // limit to 16 points
+                }
+                if (i>=curposnext) { // read raw curve data
+                    cordpos=0;
+                    if (count<256) {mfd->ovalue[curpos][count]=cv;}
+                    count++;}
+                if (i == cordpos) {
+                    if (mfd->drwmode[curpos]==3 && cordcount==1) {
+                        if (gma>250) {mfd->drwpoint[curpos][cordcount][0]=64;}
+                        else if (gma<50) {mfd->drwpoint[curpos][cordcount][0]=192;}
+                        else {mfd->drwpoint[curpos][cordcount][0]=128;}
+                        mfd->drwpoint[curpos][cordcount][1]=int(pow(float(mfd->drwpoint[curpos][cordcount][0])/256,100/float(gma))*256+0.5);
+                        cordcount++;
+                        mfd->poic[curpos]++;}
+                    mfd->drwpoint[curpos][cordcount][0]=cv;}
+                if (i == cordpos+1) {
+                    mfd->drwpoint[curpos][cordcount][1]=cv;
+                    if (cordcount<mfd->poic[curpos]-1 && cordcount<15) {cordcount++;} // limit to 16 points
+                    cordpos=cordpos+2;}
+            }
+            fclose (pFile);
+        }
+        if (mfd->filter == 5) { //*.map exchange 4<->0
+            drwmodtmp=mfd->drwmode[4];
+            pictmp=mfd->poic[4];
+            for (i=0;i<pictmp;i++){
+                drwtmp[i][0]=mfd->drwpoint[4][i][0];
+                drwtmp[i][1]=mfd->drwpoint[4][i][1];}
+            for (j=4;j>0;j--) {
+                for (i=0;i<mfd->poic[j-1];i++) {
+                    mfd->drwpoint[j][i][0]=mfd->drwpoint[j-1][i][0];
+                    mfd->drwpoint[j][i][1]=mfd->drwpoint[j-1][i][1];}
+                mfd->poic[j]=mfd->poic[j-1];
+                mfd->drwmode[j]=mfd->drwmode[j-1];}
+            for (i=0;i<pictmp;i++){
+                mfd->drwpoint[0][i][0]=drwtmp[i][0];
+                mfd->drwpoint[0][i][1]=drwtmp[i][1];}
+            mfd->poic[0]=pictmp;
+            mfd->drwmode[0]=drwmodtmp;
+            for (i=0;i<256;i++) {temp[i]=mfd->ovalue[4][i];}
+            for (j=4;j>0;j--) {
+                for (i=0;i<256;i++) {mfd->ovalue[j][i]=mfd->ovalue[j-1][i];}
+            }
+            for (i=0;i<256;i++) {mfd->ovalue[0][i]=temp[i];}
+        }
+        cmtmp=mfd->channel_mode;
+        for (i=0;i<5;i++) { // calculate curve values
+            mfd->channel_mode=i;
+            if (mfd->drwmode[i]!=0) {CalcCurve(mfd);}
+        }
+        mfd->channel_mode=cmtmp;
+        mfd->cp=0;
+        nrf=true;
+    }
+    else if (mfd->filter == 6) // *.amp Smartvurve hsv
+    {
+        pFile = fopen (mfd->filename, "rb");
+        if (pFile==NULL)
+        {
+            MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
+        }
+        else
+        {
+            fseek (pFile , 0 , SEEK_END);
+            lSize = ftell (pFile);
+            rewind (pFile);
+            for(i=0; (i < 768) && ( feof(pFile) == 0 ); i++ )
+            {
+                if (i<256)
+                {stor[i+512] = fgetc(pFile);}
+                if (i>255 && i <512)
+                {stor[i] = fgetc(pFile);}
+                if (i>511)
+                {stor[i-512] = fgetc(pFile);}
+            }
+            fclose (pFile);
+            lSize = 768;
         }
     }
     else
@@ -2482,41 +2897,55 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
             fclose (pFile);
         }
     }
-
-    if (lSize > 768)
-    {
-        for(i=0; i < 256; i++) {
-            mfd->ovalue[0][i] = stor[i];
+    if (nrf==false) { //fill curves for non coordinates file types
+        if (lSize > 768){
+            for(i=0; i < 256; i++) {
+                mfd->ovalue[0][i] = stor[i];
+                mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+            }
+            for(i=256; i < 512; i++) {
+                mfd->ovalue[1][(i-256)] = stor[i];
+                mfd->rvalue[1][(i-256)]=(mfd->ovalue[1][(i-256)]<<16);
+            }
+            for(i=512; i < 768; i++) {
+                mfd->ovalue[2][(i-512)] = stor[i];
+                mfd->gvalue[1][(i-512)]=(mfd->ovalue[2][(i-512)]<<8);
+            }
+            for(i=768; i < 1024; i++) {mfd->ovalue[3][(i-768)] = stor[i];}
+            for(i=1024; i < 1280; i++) {mfd->ovalue[4][(i-1024)] = stor[i];}
         }
-        for(i=256; i < 512; i++) {
-            mfd->ovalue[1][(i-256)] = stor[i];
+        if (lSize < 769 && lSize > 256){
+            for(i=0; i < 256; i++) {
+                mfd->ovalue[1][i] = stor[i];
+                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
+            }
+            for(i=256; i < 512; i++) {
+                mfd->ovalue[2][(i-256)] = stor[i];
+                mfd->gvalue[1][(i-256)]=(mfd->ovalue[2][(i-256)]<<8);
+            }
+            for(i=512; i < 768; i++) {mfd->ovalue[3][(i-512)] = stor[i];}
         }
-        for(i=512; i < 768; i++) {
-            mfd->ovalue[2][(i-512)] = stor[i];
+        if (lSize < 257 && lSize > 0) {
+            for(i=0; i < 256; i++) {
+                mfd->ovalue[0][i] = stor[i];
+                mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
+                mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
+                mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
+                mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
+                mfd->bvalue[i]=mfd->ovalue[0][i]-i;
+            }
         }
-        for(i=768; i < 1024; i++) {
-            mfd->ovalue[3][(i-768)] = stor[i];
-        }
-        for(i=1024; i < 1280; i++) {
-            mfd->ovalue[4][(i-1024)] = stor[i];
-        }
-    }
-    if (lSize < 769 && lSize > 256)
-    {
-        for(i=0; i < 256; i++) {
-            mfd->ovalue[1][i] = stor[i];
-        }
-        for(i=256; i < 512; i++) {
-            mfd->ovalue[2][(i-256)] = stor[i];
-        }
-        for(i=512; i < 768; i++) {
-        mfd->ovalue[3][(i-512)] = stor[i];
-        }
-    }
-    if (lSize < 257 && lSize > 0)
-    {
-        for(i=0; i < 256; i++) {
-            mfd->ovalue[0][i] = stor[i];
+        for (i=0;i<5;i++) {
+            mfd->drwmode[i]=0;
+            mfd->poic[i]=2;
+            mfd->drwpoint[i][0][0]=0;
+            mfd->drwpoint[i][0][1]=0;
+            mfd->drwpoint[i][1][0]=255;
+            mfd->drwpoint[i][1][1]=255;
         }
     }
 }
@@ -2526,12 +2955,36 @@ void ExportCurve(HWND hWnd, MyFilterData *mfd) // export curves
     int i;
     int j;
     char c;
+    char zro;
 
-    if (mfd->filter == 2){ // *.csv
+    if (mfd->filter == 2) { // *.acv
+        zro = char (0);
+        pFile = fopen (mfd->filename,"wb");
+        fprintf (pFile, "%c",zro);
+        c = char (4);
+        fprintf (pFile, "%c",c);
+        fprintf (pFile, "%c",zro);
+        c = char (5);
+        fprintf (pFile, "%c",c);
+        for (j=0; j<5;j++) {
+            fprintf (pFile, "%c",zro);
+            c = char (mfd->poic[j]);
+            fprintf (pFile, "%c",c);
+            for (i=0; i<mfd->poic[j]; i++) {
+                fprintf (pFile, "%c",zro);
+                c = char (mfd->drwpoint[j][i][1]);
+                fprintf (pFile, "%c",c);
+                fprintf (pFile, "%c",zro);
+                c = char (mfd->drwpoint[j][i][0]);
+                fprintf (pFile, "%c",c);
+            }
+        }
+    }
+    else if (mfd->filter == 3) { // *.csv
         pFile = fopen (mfd->filename,"w");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
-                fprintf (pFile, "%02X\n",(mfd->ovalue[j][i]));
+                fprintf (pFile, "%d\n",(mfd->ovalue[j][i]));
             }
         }
     }
