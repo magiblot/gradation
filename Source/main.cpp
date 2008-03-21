@@ -1,5 +1,5 @@
 /*
-    Gradation Filter v1.44 for VirtualDub -- a wide range of color
+    Gradation Curves Filter v1.45 for VirtualDub -- a wide range of color
     manipulation through gradation curves.
     Copyright (C) 2008 Alexander Nagiller
     Speed optimizations for HSV and CMYK by Achim Stahlberger.
@@ -238,7 +238,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Version 1.44 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
+    "Version 1.45 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -286,8 +286,8 @@ void PreCalcLut();
 void CalcCurve(MyFilterData *mfd);
 void GrdDrawGradTable(HWND hWnd, int table[], int laboff, int dmode, int dp[16][2], int pc, int ap);
 void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
-void ImportCurve(HWND hWnd, MyFilterData *mfd);
-void ExportCurve(HWND hWnd, MyFilterData *mfd);
+void ImportCurve(MyFilterData *mfd);
+void ExportCurve(MyFilterData *mfd);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1205,7 +1205,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 mfd->filter = ofn.nFilterIndex;
                 if (mfd->filename[0] != 0)
                 {
-                    ImportCurve (hdlg, mfd);
+                    ImportCurve (mfd);
                     if (mfd->drwmode[mfd->channel_mode]==0) {
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                         ShowWindow(hWnd, SW_HIDE);
@@ -1307,7 +1307,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                 mfd->filter = ofn.nFilterIndex;
                 if (mfd->filename[0] != 0)
                 {
-                    ExportCurve (hdlg, mfd);
+                    ExportCurve (mfd);
                 }
                 break;
                 }
@@ -2667,7 +2667,7 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
     }
 }
 
-void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
+void ImportCurve(MyFilterData *mfd) // import curves
 {
     FILE *pFile;
     int i;
@@ -2949,7 +2949,7 @@ void ImportCurve(HWND hWnd, MyFilterData *mfd) // import curves
         }
     }
 }
-void ExportCurve(HWND hWnd, MyFilterData *mfd) // export curves
+void ExportCurve(MyFilterData *mfd) // export curves
 {
     FILE *pFile;
     int i;
