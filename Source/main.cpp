@@ -1,5 +1,5 @@
 /*
-    Gradation Curves Filter v1.45 for VirtualDub -- a wide range of color
+    Gradation Curves Filter v1.46 for VirtualDub -- a wide range of color
     manipulation through gradation curves.
     Copyright (C) 2008 Alexander Nagiller
     Speed optimizations for HSV and CMYK by Achim Stahlberger.
@@ -221,6 +221,10 @@ typedef struct MyFilterData {
     int poic[5];
     int cp;
     bool psel;
+    double scalex;
+    double scaley;
+    unsigned int boxx;
+    int boxy;
     TCHAR gamma[10];
 } MyFilterData;
 
@@ -238,7 +242,7 @@ struct FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
-    "Version 1.45 Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
+    "Version 1.46 Beta Adjustment of contrast, brightness, gamma and a wide range of color manipulations through gradation curves is possible. Speed optimizations for HSV and CMYK by Achim Stahlberger.",
                             // desc
     "Alexander Nagiller",   // maker
     NULL,                   // private_data
@@ -676,6 +680,7 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     int min;
     int mode;
     int spacemode;
+    RECT rect;
     HWND hWnd;
     HCURSOR hCursor;
     HWND hWndBtn1 = NULL;
@@ -848,6 +853,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
                     CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
                     break;
             }
+            GetClientRect(GetDlgItem(hdlg, IDC_GRADCURVE), &rect);
+            mfd->boxx=rect.right-rect.left-1;
+            mfd->boxy=rect.bottom-rect.top;
+            mfd->scalex=(256/double(mfd->boxx));
+            mfd->scaley=(256/double(mfd->boxy));
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
             return TRUE;
         case WM_PAINT:
@@ -870,11 +880,11 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case WM_USER + 100:
             if (wParam > 32768) {ax = 0;}
-            else if (wParam > 255) {ax = 255;}
-            else {ax = wParam;}
-            if (lParam > 32768) {ay=255;}
-            else if (lParam > 255) {ay = 0;}
-            else {ay = 255-lParam;}
+            else if (wParam >= mfd->boxx) {ax = 255;}
+            else {ax = int(wParam*mfd->scalex+0.5);}
+            if (lParam > 32768) {ay = 255;}
+            else if (lParam >= mfd->boxy) {ay = 0;}
+            else {ay = 255-int(lParam*mfd->scaley+0.5);}
             if (mfd->drwmode[mfd->channel_mode]==0){
                 mfd->ovalue[mfd->channel_mode][ax]=(ay);
                 switch (mfd->channel_mode) { //for faster RGB modes
@@ -1053,10 +1063,10 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
 
         case WM_USER + 101: //left mouse button pressed
-            if (wParam > 255) {ax = 255;}
-            else if (wParam <= 255) {ax = wParam;}
-            if (lParam > 255) {ay = 0;}
-            else if (lParam <= 255) {ay = 255-lParam;}
+            if (wParam >= mfd->boxx) {ax = 255;}
+            else if (wParam < mfd->boxx) {ax = int(wParam*mfd->scalex+0.5);}
+            if (lParam >= mfd->boxy) {ay = 0;}
+            else if (lParam < mfd->boxy) {ay = 255-int(lParam*mfd->scaley+0.5);}
             if (mfd->drwmode[mfd->channel_mode]==0){
                 mfd->xl = 300;
                 mfd->yl = 300;
@@ -1119,19 +1129,17 @@ BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
 
         case WM_USER + 103: //right mouse button pressed
+            if (wParam >= mfd->boxx) {ax = 255;}
+            else if (wParam < mfd->boxx) {ax = int(wParam*mfd->scalex+0.5);}
+            if (lParam >= mfd->boxy) {ay = 0;}
+            else if (lParam < mfd->boxy) {ay = 255-int(lParam*mfd->scaley+0.5);}
             if (mfd->drwmode[mfd->channel_mode]==0){
-                if (wParam > 255) {ax = 255;}
-                else if (wParam <= 255) {ax = wParam;}
                 mfd->value=ax;
                 SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
             else if ((mfd->drwmode[mfd->channel_mode]==1 || mfd->drwmode[mfd->channel_mode]==2) && mfd->poic[mfd->channel_mode]>2){ // delete point
                 stp=false;
                 ptp=false;
-                if (wParam > 255) {ax = 255;}
-                else if (wParam <= 255) {ax = wParam;}
-                if (lParam > 255) {ay = 0;}
-                else if (lParam <= 255) {ay = 255-lParam;}
                 for (i=1; i<(mfd->poic[mfd->channel_mode])-1;i++){
                     if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11 && stp==false){
                         if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
@@ -2379,6 +2387,8 @@ void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2]
     char *tmp;
     tmp = "";
     int buflen=1000;
+    int loffx;
+    int loffy;
 
     int i;
     HDC hdc;
@@ -2386,6 +2396,8 @@ void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2]
     HPEN hPen2;
     HBRUSH hBrush;
 
+    loffx=int((double(rect.right - rect.left-1)/256)*loff);
+    loffy=int((double(rect.bottom - rect.top)/256)*loff);
     hdc = GetDC(hWnd);
 
     scaleX = (double)(rect.right - rect.left-1)/4.0;
@@ -2395,16 +2407,16 @@ void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2]
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left + int(scaleX*i+0.5)+loff, rect.top, NULL);
-        LineTo(hdc, rect.left + int(scaleX*i+0.5)+loff, rect.bottom - 1);
+        MoveToEx(hdc, rect.left + int(scaleX*i+0.5)+loffx, rect.top, NULL);
+        LineTo(hdc, rect.left + int(scaleX*i+0.5)+loffx, rect.bottom - 1);
     }
 
     DeleteObject(SelectObject(hdc, CreatePen(PS_DOT, 1, RGB(70, 70, 70))));
 
     for(i = 1; i < 4; i++)
     {
-        MoveToEx(hdc, rect.left, rect.bottom - int(scaleY*i+0.5)-loff - 1, NULL);
-        LineTo(hdc, rect.right, rect.bottom - int(scaleY*i+0.5)-loff - 1);
+        MoveToEx(hdc, rect.left, rect.bottom - int(scaleY*i+0.5)-loffy - 1, NULL);
+        LineTo(hdc, rect.right, rect.bottom - int(scaleY*i+0.5)-loffy - 1);
     }
 
     DeleteObject(SelectObject(hdc, hPen = CreatePen(PS_SOLID, 1, RGB(0, 0, 0))));
@@ -2447,6 +2459,7 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
     int i;
     int j;
     int dif;
+    int difb;
     int x;
     int y;
     int z;
@@ -2471,9 +2484,10 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
             UpdateWindow(hWnd);
             GetClientRect(hWnd, &rect);
             hdc = GetDC(hWnd);
-            scaleX = (double)(rect.right - rect.left) / 257.0;
-            YY = (int)(rect.bottom - rect.top);
+            scaleX = (double)(rect.right - rect.left-1) / 256.0;
+            YY=rect.bottom-rect.top;
             dif = (YY+1)/3;
+            difb = 256/(rect.bottom-rect.top);
             start=1;
             end=YY;}
         else {
@@ -2481,9 +2495,10 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
             UpdateWindow(hWnd2);
             GetClientRect(hWnd2, &rect);
             hdc = GetDC(hWnd2);
-            XX = (int)(rect.right - rect.left);
+            XX=rect.right-rect.left;
             scaleY = (double)(rect.bottom - rect.top) / 256.0;
             dif = (XX+1)/3;
+            difb = 256/(rect.right-rect.left);
             start=0;
             end=XX-1;}
         SelectObject(hdc, CreatePen(PS_SOLID, 1, RGB(0, 0, 0)));
@@ -2531,12 +2546,12 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
                             z = 0;
                         break;
                         case 2:
-                            x = (j*23+2)<<16;
+                            x = (j*difb)<<16;
                             y = i-128;
                             z = 0;
                         break;
                         case 3:
-                            x = (j*23+2)<<16;
+                            x = (j*difb)<<16;
                             y = 0;
                             z = i-128;
                         break;
@@ -2643,10 +2658,10 @@ void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the two col
                             lab=labrgb[((i<<16)+30603)];
                         break;
                         case 2:
-                            lab=labrgb[(((j*23+2)<<16)+(i<<8)+136)];
+                            lab=labrgb[(((j*difb)<<16)+(i<<8)+136)];
                         break;
                         case 3:
-                            lab=labrgb[(((j*23+2)<<16)+30464+i)];
+                            lab=labrgb[(((j*difb)<<16)+30464+i)];
                         break;
                         }
                         r = (lab & 0xFF0000)>>16;
