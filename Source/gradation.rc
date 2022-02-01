@@ -13,6 +13,30 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
+// Neutral resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_NEU)
+#ifdef _WIN32
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON1               ICON    DISCARDABLE     "Pen32.ico"
+IDI_ICON2               ICON    DISCARDABLE     "Line32.ico"
+IDI_ICON3               ICON    DISCARDABLE     "Spline32.ico"
+IDI_ICON4               ICON    DISCARDABLE     "Gamma32.ico"
+#endif    // Neutral resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
 // English (U.S.) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
@@ -59,21 +83,30 @@ FONT 8, "MS Sans Serif"
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,68,301,50,13
     PUSHBUTTON      "Cancel",IDCANCEL,12,301,50,13
+    PUSHBUTTON      "Help",IDHELP,68,284,50,13
     PUSHBUTTON      "Show Preview",IDPREVIEW,12,284,50,13
+    PUSHBUTTON      "Export",IDEXPORT,68,268,49,13
+    PUSHBUTTON      "Import",IDIMPORT,12,268,50,13
+    PUSHBUTTON      "Invert",IDC_INVERTX,68,252,50,13
     PUSHBUTTON      "Reset",IDC_RESET,12,252,50,13
-    PUSHBUTTON      "Invert",IDC_INVERT,68,252,50,13
-    CONTROL         "Slider1",IDC_SVALUE,"msctls_trackbar32",TBS_TOP |
-                    TBS_NOTICKS | WS_TABSTOP,21,206,190,17
-    LTEXT           "Output Value:",IDC_STATIC,141,232,43,8
-    LTEXT           "",IDC_OUTPUTVALUE,190,232,14,8
-    LTEXT           "Input Value:",IDC_STATIC,68,232,39,8
-    LTEXT           "",IDC_VALUE,112,232,20,8
-    PUSHBUTTON      "+",IDC_INPUTPLUS,216,205,9,9
-    PUSHBUTTON      "-",IDC_INPUTMINUS,216,214,9,9
-    PUSHBUTTON      "+",IDC_OUTPUTPLUS,216,227,9,9
-    PUSHBUTTON      "-",IDC_OUTPUTMINUS,216,236,9,9
-    RTEXT           "Channel:",IDC_STATIC,36,7,32,13,SS_CENTERIMAGE
-    COMBOBOX        IDC_CHANNEL,77,7,69,58,CBS_DROPDOWN | WS_VSCROLL |
+    PUSHBUTTON      "Smooth",IDC_SMOOTH,12,236,50,13
+    LTEXT           "Point:",IDC_POINT,12,210,19,8
+    LTEXT           "",IDC_POINTNO,34,210,9,8
+    PUSHBUTTON      "-",IDC_POINTMINUS,12,221,9,9
+    PUSHBUTTON      "+",IDC_POINTPLUS,22,221,9,9
+    LTEXT           "Input Value:",IDC_STATIC,49,209,39,8
+    PUSHBUTTON      "-",IDC_INPUTMINUS,49,220,9,9
+    PUSHBUTTON      "+",IDC_INPUTPLUS,59,220,9,9
+    LTEXT           "",IDC_VALUE,75,220,20,8
+    LTEXT           "",IDC_OUTPUTVALUE,129,220,14,8
+    PUSHBUTTON      "-",IDC_OUTPUTMINUS,99,220,9,9
+    PUSHBUTTON      "+",IDC_OUTPUTPLUS,109,220,9,9
+    LTEXT           "Output Value:",IDC_STATIC,99,209,43,8
+    RTEXT           "Space:",IDC_STATIC,12,7,24,13,SS_CENTERIMAGE
+    COMBOBOX        IDC_SPACE,39,7,54,79,CBS_DROPDOWN | WS_VSCROLL |
+                    WS_TABSTOP
+    RTEXT           "Channel:",IDC_STATIC,103,7,29,13,SS_CENTERIMAGE
+    COMBOBOX        IDC_CHANNEL,135,7,69,58,CBS_DROPDOWN | WS_VSCROLL |
                     WS_TABSTOP
     CONTROL         "",IDC_GRADCURVE,"BBFilterWindow",WS_BORDER | WS_GROUP |
                     0x1000,29,27,174,160
@@ -81,20 +114,22 @@ BEGIN
                     174,9
     CONTROL         "",IDC_VBORDER,"Static",SS_GRAYRECT | WS_BORDER,12,27,10,
                     160
-    GROUPBOX        "Processing",IDC_STATIC,127,250,98,61
-    CONTROL         "RGB only",IDC_RGB,"Button",BS_AUTORADIOBUTTON,132,261,
-                    47,8
-    CONTROL         "RGB + R/G/B",IDC_FULL,"Button",BS_AUTORADIOBUTTON,132,
-                    270,72,8
-    CONTROL         "RGB weighted",IDC_RGBW,"Button",BS_AUTORADIOBUTTON,132,
-                    280,64,8
-    CONTROL         "RGB weighted + R/G/B",IDC_FULLW,"Button",
-                    BS_AUTORADIOBUTTON,132,290,89,8
-    CONTROL         "no processing",IDC_OFF,"Button",BS_AUTORADIOBUTTON,132,
-                    299,60,8
-    PUSHBUTTON      "Help",IDHELP,68,284,50,13
-    PUSHBUTTON      "Import",IDIMPORT,12,268,50,13
-    PUSHBUTTON      "Export",IDEXPORT,68,268,49,13
+    GROUPBOX        "Processing",IDC_STATIC,127,252,98,62
+    CONTROL         "",IDC_RGB,"Button",BS_AUTORADIOBUTTON,132,261,85,8
+    CONTROL         "",IDC_FULL,"Button",BS_AUTORADIOBUTTON,132,270,83,8
+    CONTROL         "",IDC_RGBW,"Button",BS_AUTORADIOBUTTON,132,280,85,8
+    CONTROL         "",IDC_FULLW,"Button",BS_AUTORADIOBUTTON,132,290,89,8
+    CONTROL         "",IDC_OFF,"Button",BS_AUTORADIOBUTTON,132,299,87,8
+    RTEXT           "",IDC_GAMMAVALUE,180,210,31,8,NOT WS_VISIBLE
+    RTEXT           "Gamma:",IDC_GAMMADSC,150,210,27,8,NOT WS_VISIBLE
+    CONTROL         "P",IDC_RADIOPM,"Button",BS_AUTORADIOBUTTON | BS_ICON |
+                    BS_PUSHLIKE,210,27,15,15
+    CONTROL         "L",IDC_RADIOLM,"Button",BS_AUTORADIOBUTTON | BS_ICON |
+                    BS_PUSHLIKE,210,47,15,15
+    CONTROL         "S",IDC_RADIOSM,"Button",BS_AUTORADIOBUTTON | BS_ICON |
+                    BS_PUSHLIKE,210,67,15,15
+    CONTROL         "G",IDC_RADIOGM,"Button",BS_AUTORADIOBUTTON | BS_ICON |
+                    BS_PUSHLIKE,210,87,15,15
 END
 
 
@@ -139,6 +174,8 @@ END
 IDD_FILTER DLGINIT
 BEGIN
     IDC_CHANNEL, 0x403, 1, 0
+"\000"
+    IDC_SPACE, 0x403, 1, 0
 "\000"
     0
 END
