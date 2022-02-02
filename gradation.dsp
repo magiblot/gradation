@@ -92,11 +92,16 @@ LINK32=xilink6.exe
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
-SOURCE=.\Source\Gradation.rc
+SOURCE=.\Source\gradation.rc
 # End Source File
 # Begin Source File
 
-SOURCE=.\Source\main.cpp
+SOURCE=.\Source\gradation.cpp
+# End Source File
+# End Group
+# Begin Source File
+
+SOURCE=.\Source\vd.cpp
 # End Source File
 # End Group
 # Begin Group "Header Files"
@@ -105,6 +110,10 @@ SOURCE=.\Source\main.cpp
 # Begin Source File
 
 SOURCE=.\Source\Filter.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\Source\gradation.h
 # End Source File
 # Begin Source File
 
