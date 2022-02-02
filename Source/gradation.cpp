@@ -31,7 +31,7 @@ int *rgblab; //LUT Lab
 int *labrgb; //LUT Lab
 
 int StartProcImpl(Gradation &grd) {
-    if (grd.Labprecalc==0 && grd.process==8) { // build up the LUT for the Lab process if it is not precalculated already
+    if (grd.Labprecalc==0 && grd.process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
         PreCalcLut();
         grd.Labprecalc = 1;}
     return 0;
@@ -64,7 +64,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
 
     switch(grd.process)
     {
-    case 0:
+    case PROCESS_RGB:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -77,7 +77,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 1:
+    case PROCESS_FULL:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -91,7 +91,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 2:
+    case PROCESS_RGBW:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -114,7 +114,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 3:
+    case PROCESS_FULLW:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -138,7 +138,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 4:
+    case PROCESS_OFF:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -151,7 +151,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 5: //YUV
+    case PROCESS_YUV:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -182,7 +182,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 6: //CMYK
+    case PROCESS_CMYK:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -231,7 +231,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 7: //HSV
+    case PROCESS_HSV:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -315,7 +315,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case 8: //LAB
+    case PROCESS_LAB:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -346,14 +346,13 @@ int InitProcImpl(Gradation &grd) {
 
     grd.Labprecalc = 0;
     for (i=0; i<5; i++){
-        grd.drwmode[i]=2;
+        grd.drwmode[i]=DRAWMODE_SPLINE;
         grd.poic[i]=2;
         grd.drwpoint[i][0][0]=0;
         grd.drwpoint[i][0][1]=0;
         grd.drwpoint[i][1][0]=255;
         grd.drwpoint[i][1][1]=255;}
-    grd.value = 0;
-    grd.process = 0;
+    grd.process = PROCESS_RGB;
     grd.xl = 300;
     grd.yl = 300;
     grd.offset = 0;
@@ -400,7 +399,7 @@ void CalcCurve(Gradation &grd)
 
     if (grd.drwpoint[grd.channel_mode][0][0]>0) {for (c2=0;c2<grd.drwpoint[grd.channel_mode][0][0];c2++){grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][0][1];}}
     switch (grd.drwmode[grd.channel_mode]){
-        case 1: //linear mode
+        case DRAWMODE_LINEAR:
             for (c1=0; c1<(grd.poic[grd.channel_mode]-1); c1++){
                 div=(grd.drwpoint[grd.channel_mode][(c1+1)][0]-grd.drwpoint[grd.channel_mode][c1][0]);
                 inc=(grd.drwpoint[grd.channel_mode][(c1+1)][1]-grd.drwpoint[grd.channel_mode][c1][1])/div;
@@ -409,7 +408,7 @@ void CalcCurve(Gradation &grd)
                 {grd.ovalue[grd.channel_mode][c2]=int(c2*inc+ofs+0.5);}
             }
         break;
-        case 2: //spline mode
+        case DRAWMODE_SPLINE:
             for (i=0;i<16;i++){ //clear tables
                 for (j=0;j<16;j++) {x[i][j]=0;}
                 y[i]=0;
@@ -455,7 +454,7 @@ void CalcCurve(Gradation &grd)
                     else {grd.ovalue[grd.channel_mode][c2]=vy;}}
             }
         break;
-        case 3: //gamma mode
+        case DRAWMODE_GAMMA:
             dx=grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][0][0];
             dy=grd.drwpoint[grd.channel_mode][2][1]-grd.drwpoint[grd.channel_mode][0][1];
             dxg=grd.drwpoint[grd.channel_mode][1][0]-grd.drwpoint[grd.channel_mode][0][0];
@@ -465,6 +464,8 @@ void CalcCurve(Gradation &grd)
             for (c1=0; c1<dx+1; c1++){
                 grd.ovalue[grd.channel_mode][c1+grd.drwpoint[grd.channel_mode][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[grd.channel_mode][0][1];
             }
+        break;
+        default:
         break;
     }
     if (grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0]<255) {for (c2=grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0];c2<256;c2++){grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][(grd.poic[grd.channel_mode]-1)][1];}}
@@ -576,7 +577,7 @@ bool ImportCurve(Gradation &grd) // import curves
     int cv;
     bool nrf = false;
 
-    for (i=0;i<5;i++){grd.drwmode[i]=0;}
+    for (i=0;i<5;i++){grd.drwmode[i]=DRAWMODE_PEN;}
 
     if (grd.filter == 2) // *.acv
     {
@@ -627,10 +628,10 @@ bool ImportCurve(Gradation &grd) // import curves
                     grd.drwpoint[i][1][1]=255;}
                 noocur=5;}
             grd.cp=0;
-            int cmtmp=grd.channel_mode;
+            Channel cmtmp=grd.channel_mode;
             for (i=0;i<5;i++) { // calculate curve values
-                grd.drwmode[i]=2;
-                grd.channel_mode=i;
+                grd.drwmode[i]=DRAWMODE_SPLINE;
+                grd.channel_mode=Channel(i);
                 CalcCurve(grd);}
             grd.channel_mode=cmtmp;
             nrf=true;
@@ -672,13 +673,14 @@ bool ImportCurve(Gradation &grd) // import curves
                 cv = fgetc(pFile);
                 if (i == beg) {
                     curpos++;
-                    grd.drwmode[curpos]=cv;
+                    grd.drwmode[curpos]=DrawMode(cv);
                     curposnext = 65530;
-                    if (grd.drwmode[curpos]==2 || grd.drwmode[curpos]==0) {grd.drwmode[curpos]=abs(grd.drwmode[curpos]-2);
+                    if (grd.drwmode[curpos] == DRAWMODE_PEN || grd.drwmode[curpos] == DRAWMODE_SPLINE) {
+                        grd.drwmode[curpos] = DrawMode(abs(grd.drwmode[curpos]-2));
                     }
                 }
-                if (i == beg+1 && grd.drwmode[curpos]==3) {gma=cv;}
-                if (i == beg+2 && grd.drwmode[curpos]==3) {gma=gma+(cv<<8);}
+                if (i == beg+1 && grd.drwmode[curpos] == DRAWMODE_GAMMA) {gma=cv;}
+                if (i == beg+2 && grd.drwmode[curpos] == DRAWMODE_GAMMA) {gma=gma+(cv<<8);}
                 if (i == beg+5) {
                     grd.poic[curpos]=cv;
                     cordpos=i+1;
@@ -693,7 +695,7 @@ bool ImportCurve(Gradation &grd) // import curves
                     if (count<256) {grd.ovalue[curpos][count]=cv;}
                     count++;}
                 if (i == cordpos) {
-                    if (grd.drwmode[curpos]==3 && cordcount==1) {
+                    if (grd.drwmode[curpos] == DRAWMODE_GAMMA && cordcount==1) {
                         if (gma>250) {grd.drwpoint[curpos][cordcount][0]=64;}
                         else if (gma<50) {grd.drwpoint[curpos][cordcount][0]=192;}
                         else {grd.drwpoint[curpos][cordcount][0]=128;}
@@ -711,7 +713,7 @@ bool ImportCurve(Gradation &grd) // import curves
         if (grd.filter == 5) { //*.map exchange 4<->0
             int temp[1280];
             int drwtmp[16][2];
-            int drwmodtmp=grd.drwmode[4];
+            DrawMode drwmodtmp=grd.drwmode[4];
             int pictmp=grd.poic[4];
             for (i=0;i<pictmp;i++){
                 drwtmp[i][0]=grd.drwpoint[4][i][0];
@@ -733,10 +735,10 @@ bool ImportCurve(Gradation &grd) // import curves
             }
             for (i=0;i<256;i++) {grd.ovalue[0][i]=temp[i];}
         }
-        int cmtmp=grd.channel_mode;
+        Channel cmtmp=grd.channel_mode;
         for (i=0;i<5;i++) { // calculate curve values
-            grd.channel_mode=i;
-            if (grd.drwmode[i]!=0) {CalcCurve(grd);}
+            grd.channel_mode=Channel(i);
+            if (grd.drwmode[i]!=DRAWMODE_PEN) {CalcCurve(grd);}
         }
         grd.channel_mode=cmtmp;
         grd.cp=0;
@@ -823,7 +825,7 @@ bool ImportCurve(Gradation &grd) // import curves
             }
         }
         for (i=0;i<5;i++) {
-            grd.drwmode[i]=0;
+            grd.drwmode[i]=DRAWMODE_PEN;
             grd.poic[i]=2;
             grd.drwpoint[i][0][0]=0;
             grd.drwpoint[i][0][1]=0;
