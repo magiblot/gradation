@@ -25,7 +25,7 @@ CFG=gradation - Win32 Debug
 # PROP AllowPerConfigDependencies 0
 # PROP Scc_ProjName ""
 # PROP Scc_LocalPath ""
-CPP=xicl6.exe
+CPP=cl.exe
 MTL=midl.exe
 RSC=rc.exe
 
@@ -51,7 +51,7 @@ RSC=rc.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LINK32=xilink6.exe
+LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /dll /machine:I386
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib comctl32.lib /nologo /subsystem:windows /dll /machine:I386 /out:"Release/gradation.vdf"
 
@@ -77,7 +77,7 @@ LINK32=xilink6.exe
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
-LINK32=xilink6.exe
+LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /dll /debug /machine:I386 /pdbtype:sept
 # ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib comctl32.lib /nologo /subsystem:windows /dll /debug /machine:I386 /out:"Debug/gradation.vdf" /pdbtype:sept
 
@@ -92,56 +92,20 @@ LINK32=xilink6.exe
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
 
-SOURCE=.\Source\gradation.rc
-# End Source File
-# Begin Source File
-
 SOURCE=.\Source\gradation.cpp
 # End Source File
-# End Group
 # Begin Source File
 
-SOURCE=.\Source\vd.cpp
+SOURCE=.\Source\gradation.rc
 # End Source File
 # End Group
-# Begin Group "Header Files"
-
-# PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
 
-SOURCE=.\Source\Filter.h
+SOURCE=.\Source\Gamma32.ico
 # End Source File
 # Begin Source File
 
 SOURCE=.\Source\gradation.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\Source\resource.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\Source\ScriptError.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\Source\ScriptInterpreter.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\Source\ScriptValue.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\Source\VBitmap.h
-# End Source File
-# End Group
-# Begin Group "Resource Files"
-
-# PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
-# Begin Source File
-
-SOURCE=.\Source\Gamma32.ico
 # End Source File
 # Begin Source File
 
@@ -153,8 +117,32 @@ SOURCE=.\Source\Pen32.ico
 # End Source File
 # Begin Source File
 
+SOURCE=.\Source\resource.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\Source\Spline32.ico
 # End Source File
-# End Group
+# Begin Source File
+
+SOURCE=.\Source\vd.cpp
+
+!IF  "$(CFG)" == "gradation - Win32 Release"
+
+!ELSEIF  "$(CFG)" == "gradation - Win32 Debug"
+
+# ADD CPP /I "./include" /I "./include/vd2/OldFilterSDK"
+
+!ENDIF 
+
+# End Source File
 # End Target
+# Begin Group "Header Files"
+
+# PROP Default_Filter "h;hpp;hxx;hm;inl"
+# End Group
+# Begin Group "Resource Files"
+
+# PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+# End Group
 # End Project
