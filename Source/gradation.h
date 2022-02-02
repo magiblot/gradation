@@ -11,7 +11,7 @@ typedef unsigned long uint32_t;
 extern int *rgblab; //LUT Lab
 extern int *labrgb; //LUT Lab
 
-enum {
+enum Space {
     SPACE_RGB               = 0,
     SPACE_YUV               = 1,
     SPACE_CMYK              = 2,
@@ -27,11 +27,28 @@ static const char *space_names[] = {
     "Lab",
 };
 
-enum {
+enum Channel {
     CHANNEL_RGB             = 0,
     CHANNEL_RED             = 1,
     CHANNEL_GREEN           = 2,
     CHANNEL_BLUE            = 3,
+
+    CHANNEL_Y               = 1,
+    CHANNEL_U               = 2,
+    CHANNEL_V               = 3,
+
+    CHANNEL_CYAN            = 1,
+    CHANNEL_MAGENTA         = 2,
+    CHANNEL_YELLOW          = 3,
+    CHANNEL_BLACK           = 4,
+
+    CHANNEL_HUE             = 1,
+    CHANNEL_SATURATION      = 2,
+    CHANNEL_VALUE           = 3,
+
+    CHANNEL_L               = 1,
+    CHANNEL_A               = 2,
+    CHANNEL_B               = 3,
 };
 
 static const char *RGBchannel_names[] = {
@@ -41,23 +58,10 @@ static const char *RGBchannel_names[] = {
     "Blue",
 };
 
-enum {
-    CHANNEL_Y               = 1,
-    CHANNEL_U               = 2,
-    CHANNEL_V               = 3,
-};
-
 static const char *YUVchannel_names[] = {
     "Luminance",
     "ChromaB",
     "ChromaR",
-};
-
-enum {
-    CHANNEL_CYAN            = 1,
-    CHANNEL_MAGENTA         = 2,
-    CHANNEL_YELLOW          = 3,
-    CHANNEL_BLACK           = 4,
 };
 
 static const char *CMYKchannel_names[] = {
@@ -67,29 +71,19 @@ static const char *CMYKchannel_names[] = {
     "Black",
 };
 
-enum {
-    CHANNEL_HUE             = 1,
-    CHANNEL_SATURATION      = 2,
-    CHANNEL_VALUE           = 3,
-};
 static const char *HSVchannel_names[] = {
     "Hue",
     "Saturation",
     "Value",
 };
 
-enum {
-    CHANNEL_L                = 1,
-    CHANNEL_A                = 2,
-    CHANNEL_B                = 3,
-};
 static const char *LABchannel_names[] = {
     "Luminance",
     "a Red-Green",
     "b Yellow-Blue",
 };
 
-enum {
+enum Process {
     PROCESS_RGB     = 0,
     PROCESS_FULL    = 1,
     PROCESS_RGBW    = 2,
@@ -113,15 +107,21 @@ static const char *process_names[] = {
     "L/a/b",
 };
 
+enum DrawMode {
+    DRAWMODE_PEN    = 0,
+    DRAWMODE_LINEAR = 1,
+    DRAWMODE_SPLINE = 2,
+    DRAWMODE_GAMMA  = 3,
+};
+
 struct Gradation {
     int rvalue[3][256];
     int gvalue[3][256];
     int bvalue[256];
     int ovalue[5][256];
-    int value;
-    int space_mode;
-    int channel_mode;
-    int process;
+    Space space_mode;
+    Channel channel_mode;
+    Process process;
     int xl;
     int yl;
     int offset;
@@ -129,7 +129,7 @@ struct Gradation {
     int filter;
     bool Labprecalc;
     int laboff;
-    int drwmode[5];
+    DrawMode drwmode[5];
     int drwpoint[5][16][2];
     int poic[5];
     int cp;
