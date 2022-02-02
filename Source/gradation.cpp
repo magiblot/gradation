@@ -70,7 +70,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue[0][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + evaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + evalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + evalueb[(old_pixel & 0x0000FF)]); //
+                new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue[0][(old_pixel & 0x0000FF)];
                 *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -83,8 +83,8 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
-                new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue[0][(med_pixel & 0x0000FF)];//((med_pixel & 0xFF0000) + evaluer[(med_pixel & 0xFF0000)>>16]) + ((med_pixel & 0x00FF00) + evalueg[(med_pixel & 0x00FF00)>>8]) + grd.ovalue[0][(med_pixel & 0x0000FF)];//((med_pixel & 0x0000FF) + evalueb[(med_pixel & 0x0000FF)]);
+                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];
+                new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue[0][(med_pixel & 0x0000FF)];
                 *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -120,7 +120,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];//((old_pixel & 0xFF0000) + cvaluer[(old_pixel & 0xFF0000)>>16]) + ((old_pixel & 0x00FF00) + cvalueg[(old_pixel & 0x00FF00)>>8]) + ((old_pixel & 0x0000FF) + cvalueb[(old_pixel & 0x0000FF)]);
+                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];
                 r = (med_pixel & 0xFF0000);
                 g = (med_pixel & 0x00FF00);
                 b = (med_pixel & 0x0000FF);
