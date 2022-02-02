@@ -572,27 +572,9 @@ bool ImportCurve(Gradation &grd) // import curves
     int i;
     int j;
     int stor[1280];
-    int temp[1280];
     long lSize;
-    int beg;
     int cv;
-    int count;
-    int noocur;
-    int curpos;
-    int cordpos;
-    int curposnext;
-    int cordcount;
-    int cmtmp;
-    int drwmodtmp;
-    int pictmp;
-    int drwtmp[16][2];
-    bool nrf;
-    int gma;
-    curpos = 0;
-    cordpos = 7;
-    cordcount = 0;
-    gma=1;
-    nrf=false;
+    bool nrf = false;
 
     for (i=0;i<5;i++){grd.drwmode[i]=0;}
 
@@ -601,7 +583,13 @@ bool ImportCurve(Gradation &grd) // import curves
         pFile = fopen (grd.filename, "rb");
         if (pFile==NULL) {return false;}
         else
-        {   fseek (pFile , 0 , SEEK_END);
+        {
+            int noocur;
+            int curpos;
+            int cordpos = 7;
+            int curposnext = -1;
+            int cordcount = 0;
+            fseek (pFile , 0 , SEEK_END);
             lSize = ftell (pFile);
             rewind (pFile);
             for(i=0; (i < lSize) && ( feof(pFile) == 0 ); i++ ) //read the file and store the coordinates
@@ -639,7 +627,7 @@ bool ImportCurve(Gradation &grd) // import curves
                     grd.drwpoint[i][1][1]=255;}
                 noocur=5;}
             grd.cp=0;
-            cmtmp=grd.channel_mode;
+            int cmtmp=grd.channel_mode;
             for (i=0;i<5;i++) { // calculate curve values
                 grd.drwmode[i]=2;
                 grd.channel_mode=i;
@@ -665,15 +653,18 @@ bool ImportCurve(Gradation &grd) // import curves
         }
     }
     else if (grd.filter == 4 || grd.filter == 5) { // *.crv *.map
-        if (grd.filter == 4) {beg=64;}
-        else {beg=320;}
-        curpos = -1;
-        curposnext = 65530;
-        cordpos = beg+6;
         pFile = fopen (grd.filename, "rb");
         if (pFile==NULL) {return false;}
         else
-        {   fseek (pFile , 0 , SEEK_END);
+        {
+            int beg = (grd.filter == 4) ? 64 : 320;
+            int count;
+            int curpos = -1;
+            int cordpos = beg+6;
+            int curposnext = 65530;
+            int cordcount;
+            int gma = 1;
+            fseek (pFile , 0 , SEEK_END);
             lSize = ftell (pFile);
             rewind (pFile);
             for(i=0; (i < lSize) && ( feof(pFile) == 0 ); i++ )
@@ -718,8 +709,10 @@ bool ImportCurve(Gradation &grd) // import curves
             fclose (pFile);
         }
         if (grd.filter == 5) { //*.map exchange 4<->0
-            drwmodtmp=grd.drwmode[4];
-            pictmp=grd.poic[4];
+            int temp[1280];
+            int drwtmp[16][2];
+            int drwmodtmp=grd.drwmode[4];
+            int pictmp=grd.poic[4];
             for (i=0;i<pictmp;i++){
                 drwtmp[i][0]=grd.drwpoint[4][i][0];
                 drwtmp[i][1]=grd.drwpoint[4][i][1];}
@@ -740,7 +733,7 @@ bool ImportCurve(Gradation &grd) // import curves
             }
             for (i=0;i<256;i++) {grd.ovalue[0][i]=temp[i];}
         }
-        cmtmp=grd.channel_mode;
+        int cmtmp=grd.channel_mode;
         for (i=0;i<5;i++) { // calculate curve values
             grd.channel_mode=i;
             if (grd.drwmode[i]!=0) {CalcCurve(grd);}
@@ -845,29 +838,21 @@ void ExportCurve(Gradation &grd) // export curves
     FILE *pFile;
     int i;
     int j;
-    char c;
-    char zro;
 
     if (grd.filter == 2) {  // *.acv
-        zro = char (0);
-        pFile = fopen (grd.filename,"wb");
-        fprintf (pFile, "%c",zro);
-        c = char (4);
-        fprintf (pFile, "%c",c);
-        fprintf (pFile, "%c",zro);
-        c = char (5);
-        fprintf (pFile, "%c",c);
+        pFile = fopen(grd.filename,"wb");
+        fputc(0, pFile);
+        fputc(4, pFile);
+        fputc(0, pFile);
+        fputc(5, pFile);
         for (j=0; j<5;j++) {
-            fprintf (pFile, "%c",zro);
-            c = char (grd.poic[j]);
-            fprintf (pFile, "%c",c);
+            fputc(0, pFile);
+            fputc(grd.poic[j], pFile);
             for (i=0; i<grd.poic[j]; i++) {
-                fprintf (pFile, "%c",zro);
-                c = char (grd.drwpoint[j][i][1]);
-                fprintf (pFile, "%c",c);
-                fprintf (pFile, "%c",zro);
-                c = char (grd.drwpoint[j][i][0]);
-                fprintf (pFile, "%c",c);
+                fputc(0, pFile);
+                fputc(grd.drwpoint[j][i][1], pFile);
+                fputc(0, pFile);
+                fputc(grd.drwpoint[j][i][0], pFile);
             }
         }
     }
@@ -883,10 +868,9 @@ void ExportCurve(Gradation &grd) // export curves
         pFile = fopen (grd.filename,"wb");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
-                c = char (grd.ovalue[j][i]);
-                fprintf (pFile, "%c",c);
+                fputc(grd.ovalue[j][i], pFile);
             }
         }
     }
-    fclose (pFile);
+    fclose(pFile);
 }
