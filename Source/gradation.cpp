@@ -27,8 +27,8 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-long *rgblab; //LUT Lab
-long *labrgb; //LUT Lab
+int *rgblab; //LUT Lab
+int *labrgb; //LUT Lab
 
 int StartProcImpl(Gradation &grd) {
     if (grd.Labprecalc==0 && grd.process==8) { // build up the LUT for the Lab process if it is not precalculated already
@@ -40,7 +40,7 @@ int StartProcImpl(Gradation &grd) {
 int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo) {
     int32_t w, h;
 
-    long r;
+    int r;
     int g;
     int b;
     int bw;
@@ -52,13 +52,13 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
     int div;
     int divh;
     int v;
-    long x;
-    long y;
-    long z;
-    long rr;
-    long gg;
-    long bb;
-    long lab;
+    int x;
+    int y;
+    int z;
+    int rr;
+    int gg;
+    int bb;
+    int lab;
 
     uint32_t old_pixel, new_pixel, med_pixel;
 
@@ -488,46 +488,46 @@ void CalcCurve(Gradation &grd)
 
 void PreCalcLut()
 {
-    long count;
-    long x;
-    long y;
-    long z;
-    long rr;
-    long gg;
-    long bb;
-    long r1;
-    long g1;
-    long b1;
+    int count;
+    int x;
+    int y;
+    int z;
+    int rr;
+    int gg;
+    int bb;
+    int r1;
+    int g1;
+    int b1;
     int r;
     int g;
     int b;
 
-    rgblab = new long[16777216];
-    labrgb = new long[16777216];
+    rgblab = new int[16777216];
+    labrgb = new int[16777216];
 
     count=0;
     for (r=0; r<256; r++) {
         for (g=0; g<256; g++) {
             for (b=0; b<256; b++) {
-                if (r > 10) {rr=long(pow(((r<<4)+224.4),(2.4)));}
-                else {rr=long((r<<4)*9987.749);}
-                if (g > 10) {gg=long(pow(((g<<4)+224.4),(2.4)));}
-                else {gg=long((g<<4)*9987.749);}
-                if (b > 10) {bb=long(pow(((b<<4)+224.4),(2.4)));}
-                else {bb=long((b<<4)*9987.749);}
-                x = long((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
-                y = long((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
-                z = long((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
+                if (r > 10) {rr=int(pow(((r<<4)+224.4),(2.4)));}
+                else {rr=int((r<<4)*9987.749);}
+                if (g > 10) {gg=int(pow(((g<<4)+224.4),(2.4)));}
+                else {gg=int((g<<4)*9987.749);}
+                if (b > 10) {bb=int(pow(((b<<4)+224.4),(2.4)));}
+                else {bb=int((b<<4)*9987.749);}
+                x = int((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
+                y = int((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
+                z = int((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
                 //XYZ to Lab
-                if (x>841776){rr=long(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
-                else {rr=long((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
-                if (y>885644){gg=long(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
-                else {gg=long((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
-                if (z>964440){bb=long(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
-                else {bb=long((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
-                x=long(((gg+16.90331)/33.806620)-40.8);
-                y=long(((rr-gg+7.23208898)/14.46417796)+119.167434);
-                z=long(((gg-bb+19.837527645)/39.67505529)+135.936123);
+                if (x>841776){rr=int(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
+                else {rr=int((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
+                if (y>885644){gg=int(pow((y),(0.33333333333333333333333333333333))*21.5443498);}
+                else {gg=int((y+642.0927467)/1284.1854934+1379.3103448275862068965517241379);}
+                if (z>964440){bb=int(pow((z),(0.33333333333333333333333333333333))*20.9408726);}
+                else {bb=int((z+699.1298454)/1398.2596908+1379.3103448275862068965517241379);}
+                x=int(((gg+16.90331)/33.806620)-40.8);
+                y=int(((rr-gg+7.23208898)/14.46417796)+119.167434);
+                z=int(((gg-bb+19.837527645)/39.67505529)+135.936123);
                 rgblab[count]=((x<<16)+(y<<8)+z);
                 count++;
             }
@@ -538,18 +538,18 @@ void PreCalcLut()
         for (y=0; y<256; y++) {
             for (z=0; z<256; z++) {
                 gg=x*50+2040;
-                rr=long(y*21.392519204-2549.29163142+gg);
-                bb=long(gg-z*58.67940678+7976.6510628);
-                if (gg>3060) {g1=long(gg*gg/32352.25239*gg);}
-                else {g1=long(x*43413.9788);}
-                if (rr>3060) {r1=long(rr*rr/34038.16258*rr);}
-                else {r1=long(rr*825.27369-1683558);}
-                if (bb>3060) {b1=long(bb*bb/29712.85911*bb);}
-                else {b1=long(bb*945.40885-1928634);}
+                rr=int(y*21.392519204-2549.29163142+gg);
+                bb=int(gg-z*58.67940678+7976.6510628);
+                if (gg>3060) {g1=int(gg*gg/32352.25239*gg);}
+                else {g1=int(x*43413.9788);}
+                if (rr>3060) {r1=int(rr*rr/34038.16258*rr);}
+                else {r1=int(rr*825.27369-1683558);}
+                if (bb>3060) {b1=int(bb*bb/29712.85911*bb);}
+                else {b1=int(bb*945.40885-1928634);}
                 //XYZ to RGB
-                rr = long(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
-                gg = long(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
-                bb = long(r1*0.278176 + g1*-1.01998 + b1*5.28535);
+                rr = int(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
+                gg = int(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
+                bb = int(r1*0.278176 + g1*-1.01998 + b1*5.28535);
                 if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
                 else {r=int((rr+75881.7458872)/151763.4917744);}
                 if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
@@ -572,7 +572,7 @@ bool ImportCurve(Gradation &grd) // import curves
     int i;
     int j;
     int stor[1280];
-    long lSize;
+    int lSize;
     int cv;
     bool nrf = false;
 

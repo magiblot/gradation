@@ -8,8 +8,8 @@ typedef long int32_t;
 typedef unsigned long uint32_t;
 #endif
 
-extern long *rgblab; //LUT Lab
-extern long *labrgb; //LUT Lab
+extern int *rgblab; //LUT Lab
+extern int *labrgb; //LUT Lab
 
 enum {
     SPACE_RGB               = 0,
@@ -114,7 +114,7 @@ static const char *process_names[] = {
 };
 
 struct Gradation {
-    long rvalue[3][256];
+    int rvalue[3][256];
     int gvalue[3][256];
     int bvalue[256];
     int ovalue[5][256];

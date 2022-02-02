@@ -39,7 +39,6 @@
 static int RunProc(const FilterActivation *fa, const FilterFunctions *ff);
 static int StartProc(FilterActivation *fa, const FilterFunctions *ff);
 static int EndProc(FilterActivation *fa, const FilterFunctions *ff);
-static long ParamProc(FilterActivation *fa, const FilterFunctions *ff);
 static int InitProc(FilterActivation *fa, const FilterFunctions *ff);
 static void DeinitProc(FilterActivation *fa, const FilterFunctions *ff);
 static int ConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd);
@@ -114,7 +113,7 @@ static CScriptObject script_obj={
     NULL, func_defs
 };
 
-static struct FilterDefinition filterDef = {
+static FilterDefinition filterDef = {
 
     NULL, NULL, NULL,       // next, prev, module
     "gradation curves",     // name
@@ -150,6 +149,7 @@ int __declspec(dllexport) __cdecl VirtualdubFilterModuleInit2(FilterModule *fm, 
     if (!(fd = ff->addFilter(fm, &filterDef, sizeof(FilterDefinition))))
         return 1;
 
+    hInst = fm->hInstModule;
     vdfd_ver = VIRTUALDUB_FILTERDEF_VERSION;
     vdfd_compat = VIRTUALDUB_FILTERDEF_COMPATIBLE;
 
@@ -196,15 +196,25 @@ static int InitProc(FilterActivation *fa, const FilterFunctions *) {
     return InitProcImpl(*mfd);
 }
 
-static BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-    MyFilterData *mfd = (MyFilterData *)GetWindowLong(hdlg, DWL_USER);
-    signed int inv[256];
+#ifdef _WIN64
+typedef INT_PTR DLGPROC_RET;
+#define GetWindowUserData(h) GetWindowLongPtr((h), DWLP_USER)
+#define SetWindowUserData(h, p) SetWindowLongPtr((h), DWLP_USER, (p))
+#else
+typedef BOOL DLGPROC_RET;
+#define GetWindowUserData(h) GetWindowLong((h), DWL_USER)
+#define SetWindowUserData(h, p) SetWindowLong((h), DWL_USER, (p))
+#endif
+
+static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+    MyFilterData *mfd = (MyFilterData *)GetWindowUserData(hdlg);
+    int inv[256];
     int invp[16][2];
     int cx;
     int cy;
     int ax;
     int ay;
-    signed int delta[256];
+    int delta[256];
     int a;
     int i;
     int j;
@@ -212,7 +222,7 @@ static BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lP
     int tmpy=0;
     bool stp;
     bool ptp;
-    signed int b;
+    int b;
     int max;
     int min;
     int mode;
@@ -231,7 +241,7 @@ static BOOL CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lP
 
     switch(msg) {
         case WM_INITDIALOG:
-            SetWindowLong(hdlg, DWL_USER, lParam);
+            SetWindowUserData(hdlg, lParam);
             mfd = (MyFilterData *)lParam;
 
             hWndBtn1 = GetDlgItem(hdlg, IDC_RADIOPM);
@@ -1604,9 +1614,8 @@ static int ConfigProc(FilterActivation *fa, const FilterFunctions *ff, HWND hwnd
     MyFilterData mfd_old = *mfd;
     int ret;
 
-    hInst = fa->filter->module->hInstModule;
     mfd->ifp = fa->ifp;
-    if (DialogBoxParam(fa->filter->module->hInstModule,
+    if (DialogBoxParam(hInst,
             MAKEINTRESOURCE(IDD_FILTER), hwnd,
             ConfigDlgProc, (LPARAM) mfd))
     {
@@ -1820,12 +1829,12 @@ static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the 
     int r;
     int g;
     int b;
-    long rr;
-    long gg;
-    long bb;
+    int rr;
+    int gg;
+    int bb;
     int ch;
     int chi;
-    long lab;
+    int lab;
     int border;
     int start;
     int end;
