@@ -80,6 +80,7 @@ static LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARA
 
 struct MyFilterData : Gradation {
     IFilterPreview *ifp;
+    int value;
 };
 
 static ScriptFunctionDef func_defs[]={
@@ -141,7 +142,7 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 ///////////////////////////////////////////////////////////////////////////
 
-static void GrdDrawGradTable(HWND hWnd, int table[], int laboff, int dmode, int dp[16][2], int pc, int ap);
+static void GrdDrawGradTable(HWND hWnd, int table[], int laboff, DrawMode dmode, int dp[16][2], int pc, int ap);
 static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -172,6 +173,7 @@ static void DeinitProc(FilterActivation *, const FilterFunctions *) {
 
 static int InitProc(FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+    mfd->value = 0;
     return InitProcImpl(*mfd);
 }
 
@@ -238,14 +240,14 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             hWnd = GetDlgItem(hdlg, IDC_SPACE);
             for(i=0; i<5; i++)
             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)space_names[i]);}
-            if (mfd->process > 4) mfd->space_mode = mfd->process - 4;
+            if (mfd->process > 4) mfd->space_mode = Space(mfd->process - 4);
             SendMessage(hWnd, CB_SETCURSEL, mfd->space_mode, 0);
             hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
             switch (mfd->space_mode){
-                case 0:
+                case SPACE_RGB:
                     for(i=0; i<4; i++)
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)RGBchannel_names[i]);}
-                    mfd->channel_mode = 0;
+                    mfd->channel_mode = Channel(0);
                     mfd->offset = 0;
                     mfd->laboff = 0;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
@@ -266,40 +268,40 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     ShowWindow (hWnd, SW_SHOWNORMAL);
                     SendMessage (hWnd,BM_SETCHECK,0,0L);
                 break;
-                case 1:
+                case SPACE_YUV:
                     for(i=0; i<3; i++)
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)YUVchannel_names[i]);}
-                    mfd->channel_mode = 0;
+                    mfd->channel_mode = Channel(0);
                     mfd->offset = 1;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"Y/U/V");
                 break;
-                case 2:
+                case SPACE_CMYK:
                     for(i=0; i<4; i++)
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)CMYKchannel_names[i]);}
-                    mfd->channel_mode = 0;
+                    mfd->channel_mode = Channel(0);
                     mfd->offset = 1;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"C/M/Y/K");
                 break;
-                case 3:
+                case SPACE_HSV:
                     for(i=0; i<3; i++)
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)HSVchannel_names[i]);}
-                    mfd->channel_mode = 0;
+                    mfd->channel_mode = Channel(0);
                     mfd->offset = 1;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"H/S/V");
                 break;
-                case 4:
+                case SPACE_LAB:
                     for(i=0; i<3; i++)
                     {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
-                    mfd->channel_mode = 0;
+                    mfd->channel_mode = Channel(0);
                     mfd->offset = 1;
                     hWnd = GetDlgItem(hdlg, IDC_RGB);
                     SetWindowText (hWnd,"L/a/b");
                 break;
             }
-            if (mfd->space_mode != 0) {
+            if (mfd->space_mode != SPACE_RGB) {
                 hWnd = GetDlgItem(hdlg, IDC_FULL);
                 SetWindowText (hWnd,"no processing");
                 SendMessage (hWnd,BM_SETCHECK,0,0L);
@@ -315,12 +317,12 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             }
             hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
             SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
-            mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
-            if (mfd->drwmode[mfd->channel_mode]!=0){
+            mfd->channel_mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
+            if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
                 SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                 SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                if (mfd->drwmode[mfd->channel_mode]==3){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     ShowWindow(hWnd, SW_SHOW);
                     SetWindowText(hWnd, mfd->gamma);
@@ -345,33 +347,33 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 case PROCESS_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
                 case PROCESS_FULLW: CheckDlgButton(hdlg, IDC_FULLW,BST_CHECKED); break;
                 case PROCESS_OFF:
-                    if (mfd->space_mode != 0) CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
+                    if (mfd->space_mode != SPACE_RGB) CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
                     else CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED); break;
-                case PROCESS_YUV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 1; break;
-                case PROCESS_CMYK: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 2; break;
-                case PROCESS_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 3; break;
-                case PROCESS_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = 4; break;
+                case PROCESS_YUV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_YUV; break;
+                case PROCESS_CMYK: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_CMYK; break;
+                case PROCESS_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_HSV; break;
+                case PROCESS_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_LAB; break;
             }
             switch  (mfd->drwmode[mfd->channel_mode]) {
-                case 0:
+                case DRAWMODE_PEN:
                     CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                     break;
-                case 1:
+                case DRAWMODE_LINEAR:
                     CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                     break;
-                case 2:
+                case DRAWMODE_SPLINE:
                     CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                     break;
-                case 3:
+                case DRAWMODE_GAMMA:
                     CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                     CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
@@ -381,7 +383,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
             return TRUE;
         case WM_PAINT:
-            {   if (mfd->Labprecalc==0 && mfd->process==8) { // build up the LUT for the Lab process if it is not precalculated already
+            {   if (mfd->Labprecalc==0 && mfd->process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
                     hCursor = LoadCursor(NULL, IDC_WAIT);
                     SetCursor (hCursor);
                     PreCalcLut();
@@ -405,7 +407,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             if (lParam > 32768) {ay=255;}
             else if (lParam > 255) {ay = 0;}
             else {ay = 255-lParam;}
-            if (mfd->drwmode[mfd->channel_mode]==0){
+            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 mfd->ovalue[mfd->channel_mode][ax]=(ay);
                 switch (mfd->channel_mode) { //for faster RGB modes
                     case 0:
@@ -532,7 +534,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             }
             else {
                 if (mfd->psel==true){
-                    if (mfd->drwmode[mfd->channel_mode]==3){
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                         if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
                             max=mfd->drwpoint[mfd->channel_mode][2][1];
                             min=mfd->drwpoint[mfd->channel_mode][0][1];}
@@ -571,7 +573,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     }
                     }
                 CalcCurve(*mfd);
-                if (mfd->drwmode[mfd->channel_mode]==3){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     SetWindowText(hWnd, mfd->gamma);}
                 mfd->value=mfd->drwpoint[mfd->channel_mode][mfd->cp][0];
@@ -587,7 +589,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             else if (wParam <= 255) {ax = wParam;}
             if (lParam > 255) {ay = 0;}
             else if (lParam <= 255) {ay = 255-lParam;}
-            if (mfd->drwmode[mfd->channel_mode]==0){
+            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 mfd->xl = 300;
                 mfd->yl = 300;
                 mfd->value=ax;
@@ -614,7 +616,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                     }
                 }
-                if (mfd->drwmode[mfd->channel_mode]!=3){ // add point
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){ // add point
                     stp=false;
                     ptp=false;
                     if (mfd->psel==false && mfd->poic[mfd->channel_mode]<16)
@@ -649,13 +651,13 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             break;
 
         case WM_USER + 103: //right mouse button pressed
-            if (mfd->drwmode[mfd->channel_mode]==0){
+            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 if (wParam > 255) {ax = 255;}
                 else if (wParam <= 255) {ax = wParam;}
                 mfd->value=ax;
                 SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
-            else if ((mfd->drwmode[mfd->channel_mode]==1 || mfd->drwmode[mfd->channel_mode]==2) && mfd->poic[mfd->channel_mode]>2){ // delete point
+            else if ((mfd->drwmode[mfd->channel_mode]==DRAWMODE_LINEAR || mfd->drwmode[mfd->channel_mode]==DRAWMODE_SPLINE) && mfd->poic[mfd->channel_mode]>2){ // delete point
                 stp=false;
                 ptp=false;
                 if (wParam > 255) {ax = 255;}
@@ -739,7 +741,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     {
                         MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
                     }
-                    if (mfd->drwmode[mfd->channel_mode]==0) {
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                         ShowWindow(hWnd, SW_HIDE);
                         hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
@@ -760,7 +762,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        if (mfd->drwmode[mfd->channel_mode]==3) {
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA) {
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             ShowWindow(hWnd, SW_SHOW);
                             SetWindowText(hWnd, mfd->gamma);
@@ -781,25 +783,25 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         ShowWindow(hWnd, SW_SHOW);
                     }
                     switch  (mfd->drwmode[mfd->channel_mode]) {
-                        case 0:
+                        case DRAWMODE_PEN:
                             CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                             break;
-                        case 1:
+                        case DRAWMODE_LINEAR:
                             CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                             break;
-                        case 2:
+                        case DRAWMODE_SPLINE:
                             CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                             break;
-                        case 3:
+                        case DRAWMODE_GAMMA:
                             CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                             CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
@@ -847,19 +849,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 return TRUE;
             case IDC_RGB:
                 switch (mfd->space_mode){
-                    case 0:
+                    case SPACE_RGB:
                     mfd->process = PROCESS_RGB;
                     break;
-                    case 1:
+                    case SPACE_YUV:
                     mfd->process = PROCESS_YUV;
                     break;
-                    case 2:
+                    case SPACE_CMYK:
                     mfd->process = PROCESS_CMYK;
                     break;
-                    case 3:
+                    case SPACE_HSV:
                     mfd->process = PROCESS_HSV;
                     break;
-                    case 4:
+                    case SPACE_LAB:
                     mfd->process = PROCESS_LAB;
                     break;
                 }
@@ -867,19 +869,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             break;
             case IDC_FULL:
                 switch (mfd->space_mode){
-                    case 0:
+                    case SPACE_RGB:
                     mfd->process = PROCESS_FULL;
                     break;
-                    case 1:
+                    case SPACE_YUV:
                     mfd->process = PROCESS_OFF;
                     break;
-                    case 2:
+                    case SPACE_CMYK:
                     mfd->process = PROCESS_OFF;
                     break;
-                    case 3:
+                    case SPACE_HSV:
                     mfd->process = PROCESS_OFF;
                     break;
-                    case 4:
+                    case SPACE_LAB:
                     mfd->process = PROCESS_OFF;
                     break;
                 }
@@ -898,7 +900,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 mfd->ifp->RedoFrame();
             break;
             case IDC_INPUTPLUS:
-                if (mfd->drwmode[mfd->channel_mode]==0){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                     if (mfd->value < 255) {
                         mfd->value++;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
@@ -911,7 +913,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][0]++;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         CalcCurve(*mfd);
-                        if (mfd->drwmode[mfd->channel_mode]==3){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
@@ -920,7 +922,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_INPUTMINUS:
-                if (mfd->drwmode[mfd->channel_mode]==0){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                     if (mfd->value > 0) {
                         mfd->value--;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
@@ -933,7 +935,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][0]--;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         CalcCurve(*mfd);
-                        if (mfd->drwmode[mfd->channel_mode]==3){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
@@ -943,7 +945,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 
                 break;
             case IDC_OUTPUTPLUS:
-                if (mfd->drwmode[mfd->channel_mode]==0){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                     if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255) {
                         mfd->ovalue[mfd->channel_mode][mfd->value]++;
                         switch (mfd->channel_mode) { //for faster RGB modes
@@ -965,7 +967,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     mfd->ifp->RedoFrame();
                 }
                 else {
-                    if (mfd->drwmode[mfd->channel_mode]==3) {
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA) {
                         if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
                             if (mfd->cp<2) {i=mfd->drwpoint[mfd->channel_mode][mfd->cp+1][1]-1;}
                             else {i=255;}
@@ -980,7 +982,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][1]++;
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         CalcCurve(*mfd);
-                        if (mfd->drwmode[mfd->channel_mode]==3){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
@@ -989,7 +991,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_OUTPUTMINUS:
-                if (mfd->drwmode[mfd->channel_mode]==0){
+                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                     if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0) {
                         mfd->ovalue[mfd->channel_mode][mfd->value]--;
                         switch (mfd->channel_mode) { //for faster RGB modes
@@ -1011,7 +1013,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     mfd->ifp->RedoFrame();
                 }
                 else {
-                    if (mfd->drwmode[mfd->channel_mode]==3) {
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA) {
                         if (mfd->drwpoint[mfd->channel_mode][0][1]<mfd->drwpoint[mfd->channel_mode][2][1]){
                             if (mfd->cp>0) {i=mfd->drwpoint[mfd->channel_mode][mfd->cp-1][1]+1;}
                             else {i=0;}
@@ -1026,7 +1028,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][1]--;
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         CalcCurve(*mfd);
-                        if (mfd->drwmode[mfd->channel_mode]==3){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
@@ -1035,7 +1037,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_POINTPLUS:
-                if (mfd->drwmode[mfd->channel_mode]!=0){
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
                     if (mfd->cp<mfd->poic[mfd->channel_mode]-1){
                         mfd->cp++;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
@@ -1045,7 +1047,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_POINTMINUS:
-                if (mfd->drwmode[mfd->channel_mode]!=0){
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
                     if (mfd->cp>0){
                         mfd->cp--;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
@@ -1056,7 +1058,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 break;
             case IDC_RESET: // reset the curve
                 switch (mfd->drwmode[mfd->channel_mode]){
-                    case 0:
+                    case DRAWMODE_PEN:
                         for (i=0; i<256; i++) {
                             mfd->ovalue[mfd->channel_mode][i] = i;
                             switch (mfd->channel_mode) { //for faster RGB modes
@@ -1078,7 +1080,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                         break;
-                    case 1:
+                    case DRAWMODE_LINEAR:
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1090,7 +1092,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                         break;
-                    case 2:
+                    case DRAWMODE_SPLINE:
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1102,7 +1104,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                         break;
-                    case 3:
+                    case DRAWMODE_GAMMA:
                         mfd->poic[mfd->channel_mode]=3;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1123,7 +1125,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 mfd->ifp->RedoFrame();
                 break;
             case IDC_SMOOTH:  // smooth the curve
-                if (mfd->drwmode[mfd->channel_mode] == 0){
+                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN){
                     if (mfd->ovalue[mfd->channel_mode][0]<=mfd->ovalue[mfd->channel_mode][255]) {
                         a = mfd->ovalue[mfd->channel_mode][0];
                         b = mfd->ovalue[mfd->channel_mode][255]-a;}
@@ -1172,7 +1174,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_INVERTX:
-                if (mfd->drwmode[mfd->channel_mode] == 0){
+                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN){
                     for (i=0; i<256; i++) {inv[255-i] = mfd->ovalue[mfd->channel_mode][i];}
                     for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = inv[i];
                     switch (mfd->channel_mode) { //for faster RGB modes
@@ -1203,7 +1205,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    if (mfd->drwmode[mfd->channel_mode] == 3){
+                    if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_GAMMA){
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                         SetWindowText(hWnd, mfd->gamma);}
                 }
@@ -1211,8 +1213,8 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 mfd->ifp->RedoFrame();
                 break;
             case IDC_RADIOPM:
-                if (mfd->drwmode[mfd->channel_mode]!=0){
-                    mfd->drwmode[mfd->channel_mode]=0;
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
+                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_PEN;
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                     GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)],mfd->cp);
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
@@ -1234,15 +1236,15 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_RADIOLM:
-                if (mfd->drwmode[mfd->channel_mode]!=1){
-                    if (mfd->drwmode[mfd->channel_mode]==0) {
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_LINEAR){
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
                         mfd->drwpoint[mfd->channel_mode][1][0]=255;
                         mfd->drwpoint[mfd->channel_mode][1][1]=255;
                         mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=1;
+                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_LINEAR;
                     CalcCurve(*mfd);
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1264,15 +1266,15 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_RADIOSM:
-                if (mfd->drwmode[mfd->channel_mode]!=2){
-                    if (mfd->drwmode[mfd->channel_mode]==0) {
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_SPLINE){
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
                         mfd->poic[mfd->channel_mode]=2;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
                         mfd->drwpoint[mfd->channel_mode][1][0]=255;
                         mfd->drwpoint[mfd->channel_mode][1][1]=255;
                         mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=2;
+                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_SPLINE;
                     CalcCurve(*mfd);
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1294,8 +1296,8 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 }
                 break;
             case IDC_RADIOGM:
-                if (mfd->drwmode[mfd->channel_mode]!=3){
-                    if (mfd->drwmode[mfd->channel_mode]==0 || mfd->poic[mfd->channel_mode]!=3) {
+                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
+                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN || mfd->poic[mfd->channel_mode]!=3) {
                         mfd->poic[mfd->channel_mode]=3;
                         mfd->drwpoint[mfd->channel_mode][0][0]=0;
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
@@ -1304,7 +1306,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][2][0]=255;
                         mfd->drwpoint[mfd->channel_mode][2][1]=255;
                         mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=3;
+                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_GAMMA;
                     CalcCurve(*mfd);
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1330,15 +1332,15 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
                     spacemode = SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0);
                     if (mfd->space_mode != spacemode) {
-                        mfd->space_mode=spacemode;
+                        mfd->space_mode = Space(spacemode);
                         hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
                         SendMessage(hWnd, CB_RESETCONTENT, 0, 0);
                         mfd->laboff = 0;
                         switch (mfd->space_mode){
-                        case 0:
+                        case SPACE_RGB:
                             for(i=0; i<4; i++)
                             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)RGBchannel_names[i]);}
-                            mfd->channel_mode = 0;
+                            mfd->channel_mode = Channel(0);
                             mfd->offset = 0;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"RGB only");
@@ -1359,37 +1361,37 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SendMessage (hWnd,BM_SETCHECK,0,0L);
                             if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_RGB;
                             break;
-                        case 1:
+                        case SPACE_YUV:
                             for(i=0; i<3; i++)
                             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)YUVchannel_names[i]);}
-                            mfd->channel_mode = 0;
+                            mfd->channel_mode = Channel(0);
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"Y/U/V");
                             if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_YUV;
                             break;
-                        case 2:
+                        case SPACE_CMYK:
                             for(i=0; i<4; i++)
                             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)CMYKchannel_names[i]);}
-                            mfd->channel_mode = 0;
+                            mfd->channel_mode = Channel(0);
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"C/M/Y/K");
                             if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_CMYK;
                             break;
-                        case 3:
+                        case SPACE_HSV:
                             for(i=0; i<3; i++)
                             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)HSVchannel_names[i]);}
-                            mfd->channel_mode = 0;
+                            mfd->channel_mode = Channel(0);
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"H/S/V");
                             if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_HSV;
                             break;
-                        case 4:
+                        case SPACE_LAB:
                             for(i=0; i<3; i++)
                             {   SendMessage(hWnd, CB_ADDSTRING, 0, (LPARAM)LABchannel_names[i]);}
-                            mfd->channel_mode = 0;
+                            mfd->channel_mode = Channel(0);
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"L/a/b");
@@ -1403,7 +1405,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                                 SetCursor (hCursor);}
                             break;
                         }
-                        if (mfd->space_mode != 0) {
+                        if (mfd->space_mode != SPACE_RGB) {
                             hWnd = GetDlgItem(hdlg, IDC_FULL);
                             SetWindowText (hWnd,"no processing");
                             SendMessage (hWnd,BM_SETCHECK,0,0L);
@@ -1425,14 +1427,14 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         }
                         hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
                         SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
-                        mfd->channel_mode = SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+                        mfd->channel_mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                        if (mfd->drwmode[mfd->channel_mode]!=3){
+                        if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             ShowWindow(hWnd, SW_HIDE);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
                             ShowWindow(hWnd, SW_HIDE);}
-                        if (mfd->drwmode[mfd->channel_mode]==0){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
@@ -1458,7 +1460,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            if (mfd->drwmode[mfd->channel_mode]==3){
+                            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                                 hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                                 ShowWindow(hWnd, SW_SHOW);
                                 SetWindowText(hWnd, mfd->gamma);
@@ -1466,25 +1468,25 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                                 ShowWindow(hWnd, SW_SHOW);}
                         }
                         switch  (mfd->drwmode[mfd->channel_mode]) {
-                            case 0:
+                            case DRAWMODE_PEN:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 1:
+                            case DRAWMODE_LINEAR:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 2:
+                            case DRAWMODE_SPLINE:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 3:
+                            case DRAWMODE_GAMMA:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
@@ -1501,19 +1503,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
                     mode=SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
                     if (mode != mfd->channel_mode) {
-                        mfd->channel_mode = mode;
-                        if (mfd->space_mode == 4) {
+                        mfd->channel_mode = Channel(mode);
+                        if (mfd->space_mode == SPACE_LAB) {
                             if (mfd->channel_mode == 2) {mfd->laboff = -9;}
                             else if (mfd->channel_mode == 3) {mfd->laboff = 8;}
                             else {mfd->laboff = 0;}
                         }
                         else {mfd->laboff = 0;}
-                        if (mfd->drwmode[mfd->channel_mode]!=3){
+                        if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             ShowWindow(hWnd, SW_HIDE);
                             hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
                             ShowWindow(hWnd, SW_HIDE);}
-                        if (mfd->drwmode[mfd->channel_mode]==0){
+                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
@@ -1539,7 +1541,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            if (mfd->drwmode[mfd->channel_mode]==3){
+                            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                                 hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                                 ShowWindow(hWnd, SW_SHOW);
                                 SetWindowText(hWnd, mfd->gamma);
@@ -1547,25 +1549,25 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                                 ShowWindow(hWnd, SW_SHOW);}
                         }
                         switch  (mfd->drwmode[mfd->channel_mode]) {
-                            case 0:
+                            case DRAWMODE_PEN:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 1:
+                            case DRAWMODE_LINEAR:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 2:
+                            case DRAWMODE_SPLINE:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
                                 break;
-                            case 3:
+                            case DRAWMODE_GAMMA:
                                 CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
                                 CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
@@ -1622,7 +1624,7 @@ static void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *ar
     const char *tmp;
     nf = false;
 
-    mfd->process = argv[0].asInt();
+    mfd->process = Process(argv[0].asInt());
     tmp = *argv[1].asString();
     for (j=0; j<5; j++) { //read raw curve data
         for (i=(j*256); i<((j+1)*256); i++) {
@@ -1665,7 +1667,7 @@ static void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *ar
     }
     else { //add data to old format for compatibility
         for (i=0;i<5;i++) {
-            mfd->drwmode[i]=0;
+            mfd->drwmode[i]=DRAWMODE_PEN;
             mfd->poic[i]=2;
             mfd->drwpoint[i][0][0]=0;
             mfd->drwpoint[i][0][1]=0;
@@ -1713,7 +1715,7 @@ static bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, 
     return false;
 }
 
-static void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2], int pc, int ap)  // draw the curve
+static void GrdDrawGradTable(HWND hWnd, int table[], int loff, DrawMode dmode, int dp[16][2], int pc, int ap)  // draw the curve
 {
     RECT rect;
 
@@ -1769,7 +1771,7 @@ static void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp
     hPen2 = CreatePen(PS_SOLID, 1, RGB(255,0,0));
     hBrush=CreateSolidBrush(RGB(255, 255, 255));
     SelectObject(hdc,hBrush);
-    if (dmode!=0) {
+    if (dmode!=DRAWMODE_PEN) {
         for (i=0;i<pc;i++){
             if (i==ap) {SelectObject(hdc,hPen2);
                 Rectangle(hdc, int((rect.left+scaleX *(dp[i][0]))-2), rect.bottom-int((scaleY *(dp[i][1]))-2), rect.left+int((scaleX *(dp[i][0]))+3), rect.bottom-int((scaleY *(dp[i][1]))+3));
@@ -1843,45 +1845,45 @@ static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the 
             for(i = 0; i < 256; i++)
             {   switch(mfd->space_mode)
                 {
-                    case 0:
+                    case SPACE_RGB:
                         switch(mfd->channel_mode)
                         {
-                        case 0:
+                        case CHANNEL_RGB:
                             r = i;
                             g = i;
                             b = i;
                         break;
-                        case 1:
+                        case CHANNEL_RED:
                             r = i;
                             g = 0;
                             b = 0;
                         break;
-                        case 2:
+                        case CHANNEL_GREEN:
                             r = 0;
                             g = i;
                             b = 0;
                         break;
-                        case 3:
+                        case CHANNEL_BLUE:
                             r = 0;
                             g = 0;
                             b = i;
                         break;
                         }
                     break;
-                    case 1:
+                    case SPACE_YUV:
                         switch(mfd->channel_mode)
                         {
-                        case 1:
+                        case CHANNEL_Y:
                             x = i<<16;
                             y = 0;
                             z = 0;
                         break;
-                        case 2:
+                        case CHANNEL_U:
                             x = (j*23+2)<<16;
                             y = i-128;
                             z = 0;
                         break;
-                        case 3:
+                        case CHANNEL_V:
                             x = (j*23+2)<<16;
                             y = 0;
                             z = i-128;
@@ -1894,104 +1896,104 @@ static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd) // draw the 
                         bb = (32768 + x + 116130 * y);
                         if (bb<0) {b=0;} else if (bb>16711680) {b=255;} else {b = bb>>16;}
                     break;
-                    case 2:
+                    case SPACE_CMYK:
                         switch(mfd->channel_mode)
                         {
-                        case 1:
+                        case CHANNEL_CYAN:
                             r = 255 - i;
                             g = 255;
                             b = 255;
                         break;
-                        case 2:
+                        case CHANNEL_MAGENTA:
                             r = 255;
                             g = 255 - i;
                             b = 255;
                         break;
-                        case 3:
+                        case CHANNEL_YELLOW:
                             r = 255;
                             g = 255;
                             b = 255 - i;
                         break;
-                        case 4:
+                        case CHANNEL_BLACK:
                             r = 255 - i;
                             g = 255 - i;
                             b = 255 - i;
                         break;
                         }
                     break;
-                    case 3:
+                    case SPACE_HSV:
                         switch(mfd->channel_mode)
                         {
-                        case 1:
+                        case CHANNEL_HUE:
                             x = i;
                             y = 255;
                             z = 255;
                         break;
-                        case 2:
+                        case CHANNEL_SATURATION:
                             x = (j/dif)*86;
                             y = i;
                             z = 255;
                         break;
-                        case 3:
+                        case CHANNEL_VALUE:
                             x = 0;
                             y = 0;
                             z = i;
                         break;
                         }
-                    if (y==0)
-                    {
-                        r = z;
-                        g = z;
-                        b = z;
-                    }
-                    else
-                    {   chi = ((x*6)&0xFF00);
-                        ch  = (x*6-chi);;
-                        switch(chi)
+                        if (y==0)
                         {
-                        case 0:
                             r = z;
-                            g = (z*(65263-(y*(256-ch)))+65531)>>16;
-                            b = (z*(255-y)+94)>>8;
-                            break;
-                        case 256:
-                            r = (z*(65263-y*ch)+65528)>>16;
                             g = z;
-                            b = (z*(255-y)+89)>>8;
-                            break;
-                        case 512:
-                            r = (z*(255-y)+89)>>8;
-                            g = z;
-                            b = (z*(65267-(y*(256-ch)))+65529)>>16;
-                            break;
-                        case 768:
-                            r = (z*(255-y)+89)>>8;
-                            g = (z*(65267-y*ch)+65529)>>16;
                             b = z;
-                            break;
-                        case 1024:
-                            r = (z*(65263-(y*(256-ch)))+65528)>>16;
-                            g = (z*(255-y)+89)>>8;
-                            b = z;
-                            break;
-                        default:
-                            r = z;
-                            g = (z*(255-y)+89)>>8;
-                            b = (z*(65309-y*(ch+1))+27)>>16;
-                            break;
                         }
-                    }
+                        else
+                        {   chi = ((x*6)&0xFF00);
+                            ch  = (x*6-chi);;
+                            switch(chi)
+                            {
+                            case 0:
+                                r = z;
+                                g = (z*(65263-(y*(256-ch)))+65531)>>16;
+                                b = (z*(255-y)+94)>>8;
+                                break;
+                            case 256:
+                                r = (z*(65263-y*ch)+65528)>>16;
+                                g = z;
+                                b = (z*(255-y)+89)>>8;
+                                break;
+                            case 512:
+                                r = (z*(255-y)+89)>>8;
+                                g = z;
+                                b = (z*(65267-(y*(256-ch)))+65529)>>16;
+                                break;
+                            case 768:
+                                r = (z*(255-y)+89)>>8;
+                                g = (z*(65267-y*ch)+65529)>>16;
+                                b = z;
+                                break;
+                            case 1024:
+                                r = (z*(65263-(y*(256-ch)))+65528)>>16;
+                                g = (z*(255-y)+89)>>8;
+                                b = z;
+                                break;
+                            default:
+                                r = z;
+                                g = (z*(255-y)+89)>>8;
+                                b = (z*(65309-y*(ch+1))+27)>>16;
+                                break;
+                            }
+                        }
                     break;
-                    case 4:
+                    case SPACE_LAB:
                         switch(mfd->channel_mode)
                         {
-                        case 1:
+                        case CHANNEL_L:
                             lab=labrgb[((i<<16)+30603)];
                         break;
-                        case 2:
+                        case CHANNEL_A:
                             lab=labrgb[(((j*23+2)<<16)+(i<<8)+136)];
                         break;
-                        case 3:
+                        case CHANNEL_B:
                             lab=labrgb[(((j*23+2)<<16)+30464+i)];
                         break;
                         }
