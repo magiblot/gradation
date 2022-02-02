@@ -5,6 +5,9 @@
 #include <commctrl.h>
 #include <stdio.h>
 
+#include <string>
+#include <sstream>
+
 #include "ScriptInterpreter.h"
 #include "ScriptError.h"
 #include "ScriptValue.h"
@@ -1666,36 +1669,39 @@ static bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, 
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     int i;
     int j;
-    char *tmp;
-    tmp = "";
+    char tmp[16];
+    std::ostringstream os;
 
-    _snprintf(buf, buflen, "Config(%d,\"",mfd->process);
+    os << "Config(" << mfd->process << ",\"";
     for (j=0; j<5; j++) {
         for (i=0; i<256; i++) {
-                _snprintf(tmp, buflen, "%02x",mfd->ovalue[j][i]);
-                strcat (buf,tmp);
+            sprintf(tmp, "%02x", mfd->ovalue[j][i]);
+            os << tmp;
         }
     }
-    strcat (buf, "\",\"");
-    _snprintf(tmp, buflen, "%01x",1);
-    strcat (buf,tmp);
-    _snprintf(tmp, buflen, "%01x",5);
-    strcat (buf,tmp);
+    os << "\",\"" << 1 << 5;
     for (i=0;i<5;i++) {
-        _snprintf(tmp, buflen, "%01x",mfd->drwmode[i]);
-        strcat (buf,tmp);}
+        sprintf(tmp, "%01x", mfd->drwmode[i]);
+        os << tmp;
+    }
     for (i=0;i<5;i++) {
-        _snprintf(tmp, buflen, "%02x",mfd->poic[i]);
-        strcat (buf,tmp);}
+        sprintf(tmp, "%02x", mfd->poic[i]);
+        os << tmp;
+    }
     for (j=0; j<5;j++) {
         for (i=0; i<mfd->poic[j]; i++) {
-            _snprintf(tmp, buflen, "%02x",mfd->drwpoint[j][i][0]);
-            strcat (buf,tmp);
-            _snprintf(tmp, buflen, "%02x",mfd->drwpoint[j][i][1]);
-            strcat (buf,tmp);}
+            sprintf(tmp, "%02x%02x", mfd->drwpoint[j][i][0], mfd->drwpoint[j][i][1]);
+            os << tmp;
         }
-    strcat (buf, "\")");
-    return true;
+    }
+    os << "\")";
+
+    const std::string &s = os.str();
+    if (int(s.size()) < buflen) {
+        strcpy(buf, s.c_str());
+        return true;
+    }
+    return false;
 }
 
 static void GrdDrawGradTable(HWND hWnd, int table[], int loff, int dmode, int dp[16][2], int pc, int ap)  // draw the curve
