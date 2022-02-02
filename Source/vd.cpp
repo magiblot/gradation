@@ -152,8 +152,8 @@ static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     PixDim width = fa->src.w;
     PixDim height = fa->src.h;
-    Pixel32 *src = (Pixel32 *)fa->src.data;
-    Pixel32 *dst = (Pixel32 *)fa->dst.data;
+    uint32_t *src = (uint32_t *)fa->src.data;
+    uint32_t *dst = (uint32_t *)fa->dst.data;
     PixOffset src_modulo = fa->src.modulo;
     PixOffset dst_modulo = fa->dst.modulo;
     return RunProcImpl(*mfd, width, height, src, dst, src_modulo, dst_modulo);
