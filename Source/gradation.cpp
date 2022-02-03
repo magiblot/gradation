@@ -27,17 +27,29 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-int *rgblab; //LUT Lab
-int *labrgb; //LUT Lab
+///////////////////////////////////////////////////////////////////////////
 
-int StartProcImpl(Gradation &grd) {
+static void PreCalcRgb2Lab(int *);
+static void PreCalcLab2Rgb(int *);
+
+///////////////////////////////////////////////////////////////////////////
+
+int rgblab[16777216];
+int labrgb[16777216];
+static bool labprecalc;
+
+void PreCalcLut(Gradation &grd) {
     if (grd.Labprecalc==0 && grd.process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
-        PreCalcLut();
-        grd.Labprecalc = 1;}
-    return 0;
+        if (!labprecalc) {
+            labprecalc = true;
+            PreCalcRgb2Lab(rgblab);
+            PreCalcLab2Rgb(labrgb);
+        }
+        grd.Labprecalc = 1;
+    }
 }
 
-int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo) {
+int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo) {
     int32_t w, h;
 
     int r;
@@ -341,7 +353,7 @@ int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, ui
     return 0;
 }
 
-int InitProcImpl(Gradation &grd) {
+int Init(Gradation &grd) {
     int i;
 
     grd.Labprecalc = 0;
@@ -487,38 +499,21 @@ void CalcCurve(Gradation &grd)
     }
 }
 
-void PreCalcLut()
+static void PreCalcRgb2Lab(int *rgblab)
 {
-    int count;
-    int x;
-    int y;
-    int z;
-    int rr;
-    int gg;
-    int bb;
-    int r1;
-    int g1;
-    int b1;
-    int r;
-    int g;
-    int b;
-
-    rgblab = new int[16777216];
-    labrgb = new int[16777216];
-
-    count=0;
-    for (r=0; r<256; r++) {
-        for (g=0; g<256; g++) {
-            for (b=0; b<256; b++) {
-                if (r > 10) {rr=int(pow(((r<<4)+224.4),(2.4)));}
-                else {rr=int((r<<4)*9987.749);}
-                if (g > 10) {gg=int(pow(((g<<4)+224.4),(2.4)));}
-                else {gg=int((g<<4)*9987.749);}
-                if (b > 10) {bb=int(pow(((b<<4)+224.4),(2.4)));}
-                else {bb=int((b<<4)*9987.749);}
-                x = int((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
-                y = int((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
-                z = int((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
+    int kk[256];
+    for (int i=0; i<256; i++) {
+        kk[i] = (i > 10) ? int(pow(((i<<4)+224.4),(2.4))) : int((i<<4)*9987.749);
+    }
+    for (int r=0; r<256; r++) {
+        for (int g=0; g<256; g++) {
+            for (int b=0; b<256; b++) {
+                int rr = kk[r];
+                int gg = kk[g];
+                int bb = kk[b];
+                int x = int((rr+6.38287545)/12.7657509 + (gg+7.36187255)/14.7237451 + (bb+14.58712555)/29.1742511);
+                int y = int((rr+12.37891725)/24.7578345 + (gg+3.68093628)/7.36187256 + (bb+36.4678139)/72.9356278);
+                int z = int((rr+136.1678335)/272.335667 + (gg+22.0856177)/44.1712354 + (bb+2.76970661)/5.53941322);
                 //XYZ to Lab
                 if (x>841776){rr=int(pow((x),(0.33333333333333333333333333333333))*21.9122842);}
                 else {rr=int((x+610.28989295)/1220.5797859+1379.3103448275862068965517241379);}
@@ -529,39 +524,37 @@ void PreCalcLut()
                 x=int(((gg+16.90331)/33.806620)-40.8);
                 y=int(((rr-gg+7.23208898)/14.46417796)+119.167434);
                 z=int(((gg-bb+19.837527645)/39.67505529)+135.936123);
-                rgblab[count]=((x<<16)+(y<<8)+z);
-                count++;
+                *rgblab++=((x<<16)+(y<<8)+z);
             }
         }
     }
-    count = 0;
-    for (x=0; x<256; x++) {
-        for (y=0; y<256; y++) {
-            for (z=0; z<256; z++) {
-                gg=x*50+2040;
-                rr=int(y*21.392519204-2549.29163142+gg);
-                bb=int(gg-z*58.67940678+7976.6510628);
-                if (gg>3060) {g1=int(gg*gg/32352.25239*gg);}
-                else {g1=int(x*43413.9788);}
-                if (rr>3060) {r1=int(rr*rr/34038.16258*rr);}
-                else {r1=int(rr*825.27369-1683558);}
-                if (bb>3060) {b1=int(bb*bb/29712.85911*bb);}
-                else {b1=int(bb*945.40885-1928634);}
+}
+
+static void PreCalcLab2Rgb(int *labrgb)
+{
+    for (int x=0; x<256; x++) {
+        int gg = int(x*50+2040);
+        int g1 = (gg > 3060) ? int(gg*gg/32352.25239*gg) : int(x*43413.9788);
+        for (int y=0; y<256; y++) {
+            int rr = int(y*21.392519204-2549.29163142+gg);
+            int r1 = (rr > 3060) ? int(rr*rr/34038.16258*rr) : int(rr*825.27369-1683558);
+            for (int z=0; z<256; z++) {
+                int bb = int(gg-z*58.67940678+7976.6510628);
+                int b1 = (bb > 3060) ? int(bb*bb/29712.85911*bb) : int(bb*945.40885-1928634);
                 //XYZ to RGB
-                rr = int(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
-                gg = int(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
-                bb = int(r1*0.278176 + g1*-1.01998 + b1*5.28535);
-                if (rr>1565400) {r=int((pow((rr),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
-                else {r=int((rr+75881.7458872)/151763.4917744);}
-                if (gg>1565400) {g=int((pow((gg),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
-                else {g=int((gg+75881.7458872)/151763.4917744);}
-                if (bb>1565400) {b=int((pow((bb),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
-                else {b=int((bb+75881.7458872)/151763.4917744);}
+                int r = int(r1*16.20355 + g1*-7.6863 + b1*-2.492855);
+                int g = int(r1*-4.84629 + g1*9.37995 + b1*0.2077785);
+                int b = int(r1*0.278176 + g1*-1.01998 + b1*5.28535);
+                if (r>1565400) {r=int((pow((r),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.996);}
+                else {r=int((r+75881.7458872)/151763.4917744);}
+                if (g>1565400) {g=int((pow((g),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-14.019);}
+                else {g=int((g+75881.7458872)/151763.4917744);}
+                if (b>1565400) {b=int((pow((b),(0.41666666666666666666666666666667))+7.8297554795)/15.659510959-13.990);}
+                else {b=int((b+75881.7458872)/151763.4917744);}
                 if (r<0) {r=0;} else if (r>255) {r=255;}
                 if (g<0) {g=0;} else if (g>255) {g=255;}
                 if (b<0) {b=0;} else if (b>255) {b=255;}
-                labrgb[count]=((r<<16)+(g<<8)+b);
-                count++;
+                *labrgb++=((r<<16)+(g<<8)+b);
             }
         }
     }
@@ -835,6 +828,7 @@ bool ImportCurve(Gradation &grd) // import curves
     }
     return true;
 }
+
 void ExportCurve(Gradation &grd) // export curves
 {
     FILE *pFile;
