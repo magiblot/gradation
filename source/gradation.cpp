@@ -39,7 +39,7 @@ int labrgb[16777216];
 static bool labprecalc;
 
 void PreCalcLut(Gradation &grd) {
-    if (grd.Labprecalc==0 && grd.process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
+    if (grd.Labprecalc==0 && grd.process==PROCMODE_LAB) { // build up the LUT for the Lab process if it is not precalculated already
         if (!labprecalc) {
             labprecalc = true;
             PreCalcRgb2Lab(rgblab);
@@ -76,7 +76,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
 
     switch(grd.process)
     {
-    case PROCESS_RGB:
+    case PROCMODE_RGB:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -89,7 +89,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_FULL:
+    case PROCMODE_FULL:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -103,7 +103,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_RGBW:
+    case PROCMODE_RGBW:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -126,7 +126,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_FULLW:
+    case PROCMODE_FULLW:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -150,7 +150,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_OFF:
+    case PROCMODE_OFF:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -163,7 +163,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_YUV:
+    case PROCMODE_YUV:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -194,7 +194,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_CMYK:
+    case PROCMODE_CMYK:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -243,7 +243,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_HSV:
+    case PROCMODE_HSV:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -327,7 +327,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
             dst = (uint32_t *)((char *)dst + dst_modulo);
         }
     break;
-    case PROCESS_LAB:
+    case PROCMODE_LAB:
         for (h = 0; h < height; h++)
         {
             for (w = 0; w < width; w++)
@@ -364,7 +364,7 @@ int Init(Gradation &grd) {
         grd.drwpoint[i][0][1]=0;
         grd.drwpoint[i][1][0]=255;
         grd.drwpoint[i][1][1]=255;}
-    grd.process = PROCESS_RGB;
+    grd.process = PROCMODE_RGB;
     grd.xl = 300;
     grd.yl = 300;
     grd.offset = 0;
@@ -560,7 +560,7 @@ static void PreCalcLab2Rgb(int *labrgb)
     }
 }
 
-bool ImportCurve(Gradation &grd) // import curves
+bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type)
 {
     FILE *pFile;
     int i;
@@ -572,9 +572,9 @@ bool ImportCurve(Gradation &grd) // import curves
 
     for (i=0;i<5;i++){grd.drwmode[i]=DRAWMODE_PEN;}
 
-    if (grd.filter == 2) // *.acv
+    if (type == FILETYPE_ACV)
     {
-        pFile = fopen (grd.filename, "rb");
+        pFile = fopen(filename, "rb");
         if (pFile==NULL) {return false;}
         else
         {
@@ -630,8 +630,8 @@ bool ImportCurve(Gradation &grd) // import curves
             nrf=true;
         }
     }
-    if (grd.filter == 3) { // *.csv
-        pFile = fopen (grd.filename, "r");
+    if (type == FILETYPE_CSV) {
+        pFile = fopen(filename, "r");
         if (pFile==NULL) {return false;}
         else
         {
@@ -646,12 +646,12 @@ bool ImportCurve(Gradation &grd) // import curves
             lSize = lSize/4;
         }
     }
-    else if (grd.filter == 4 || grd.filter == 5) { // *.crv *.map
-        pFile = fopen (grd.filename, "rb");
+    else if (type == FILETYPE_CRV || type == FILETYPE_MAP) {
+        pFile = fopen(filename, "rb");
         if (pFile==NULL) {return false;}
         else
         {
-            int beg = (grd.filter == 4) ? 64 : 320;
+            int beg = (type == FILETYPE_CRV) ? 64 : 320;
             int count;
             int curpos = -1;
             int cordpos = beg+6;
@@ -703,7 +703,7 @@ bool ImportCurve(Gradation &grd) // import curves
             }
             fclose (pFile);
         }
-        if (grd.filter == 5) { //*.map exchange 4<->0
+        if (type == FILETYPE_MAP) { //*.map exchange 4<->0
             int temp[1280];
             int drwtmp[16][2];
             DrawMode drwmodtmp=grd.drwmode[4];
@@ -737,9 +737,9 @@ bool ImportCurve(Gradation &grd) // import curves
         grd.cp=0;
         nrf=true;
     }
-    else if (grd.filter == 6) // *.amp Smartvurve hsv
+    else if (type == FILETYPE_SMARTCURVE_HSV)
     {
-        pFile = fopen (grd.filename, "rb");
+        pFile = fopen(filename, "rb");
         if (pFile==NULL) {return false;}
         else
         {
@@ -759,9 +759,9 @@ bool ImportCurve(Gradation &grd) // import curves
             lSize = 768;
         }
     }
-    else
+    else // FILETYPE_AMP
     {
-        pFile = fopen (grd.filename, "rb"); // *.amp
+        pFile = fopen(filename, "rb");
         if (pFile==NULL) {return false;}
         else
         {
@@ -829,14 +829,14 @@ bool ImportCurve(Gradation &grd) // import curves
     return true;
 }
 
-void ExportCurve(Gradation &grd) // export curves
+void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
 {
     FILE *pFile;
     int i;
     int j;
 
-    if (grd.filter == 2) {  // *.acv
-        pFile = fopen(grd.filename,"wb");
+    if (type == FILETYPE_ACV) {
+        pFile = fopen(filename,"wb");
         fputc(0, pFile);
         fputc(4, pFile);
         fputc(0, pFile);
@@ -852,16 +852,16 @@ void ExportCurve(Gradation &grd) // export curves
             }
         }
     }
-    else if (grd.filter == 3) {  // *.csv
-        pFile = fopen (grd.filename,"w");
+    else if (type == FILETYPE_CSV) {
+        pFile = fopen(filename,"w");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
                 fprintf (pFile, "%d\n",(grd.ovalue[j][i]));
             }
         }
     }
-    else {  // *.amp
-        pFile = fopen (grd.filename,"wb");
+    else { // FILETYPE_AMP
+        pFile = fopen(filename,"wb");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
                 fputc(grd.ovalue[j][i], pFile);
