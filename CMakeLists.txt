@@ -2,6 +2,24 @@ cmake_minimum_required(VERSION 3.5)
 
 project(gradation)
 
+function(common_compile_settings t)
+    if (WIN32)
+        target_compile_definitions(${t} PRIVATE
+            _CRT_NONSTDC_NO_WARNINGS
+            _CRT_SECURE_NO_WARNINGS
+        )
+    endif()
+
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        target_compile_options(${t} PRIVATE
+            /Zc:__cplusplus
+            /Zc:inline
+        )
+    endif()
+endfunction()
+
+# Target gradation-vd
+
 add_library(gradation-vd SHARED
     source/gradation.cpp
     source/gradation.rc
@@ -16,18 +34,23 @@ target_include_directories(gradation-vd PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/include/vd2/OldFilterSdk"
 )
 
+common_compile_settings(gradation-vd)
+
 if (WIN32)
-    target_compile_definitions(gradation-vd PRIVATE
-        _CRT_SECURE_NO_WARNINGS
-    )
     target_link_libraries(gradation-vd PRIVATE
         Comctl32
     )
 endif()
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    target_compile_options(gradation-vd PRIVATE
-        /Zc:__cplusplus
-        /Zc:inline
-    )
-endif()
+# Target gradation-avs
+
+add_library(gradation-avs SHARED
+    source/avs.cpp
+    source/gradation.cpp
+)
+
+target_include_directories(gradation-avs PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/include/avisynth"
+)
+
+common_compile_settings(gradation-avs)
