@@ -2,8 +2,8 @@
 
 !include/
 !include/**/
-!Source/
-!Source/**/
+!source/
+!source/**/
 
 !gradation.dsp
 
