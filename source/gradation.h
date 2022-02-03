@@ -145,7 +145,7 @@ struct Gradation {
 };
 
 int Init(Gradation &grd);
-int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo);
+int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
 
 void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);

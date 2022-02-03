@@ -160,9 +160,9 @@ static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
     PixDim height = fa->src.h;
     uint32_t *src = (uint32_t *)fa->src.data;
     uint32_t *dst = (uint32_t *)fa->dst.data;
-    PixOffset src_modulo = fa->src.modulo;
-    PixOffset dst_modulo = fa->dst.modulo;
-    return Run(*mfd, width, height, src, dst, src_modulo, dst_modulo);
+    PixOffset src_pitch = fa->src.pitch;
+    PixOffset dst_pitch = fa->dst.pitch;
+    return Run(*mfd, width, height, src, dst, src_pitch, dst_pitch);
 }
 
 static int EndProc(FilterActivation *, const FilterFunctions *) {
