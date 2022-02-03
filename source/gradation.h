@@ -83,16 +83,16 @@ static const char *LABchannel_names[] = {
     "b Yellow-Blue",
 };
 
-enum Process {
-    PROCESS_RGB     = 0,
-    PROCESS_FULL    = 1,
-    PROCESS_RGBW    = 2,
-    PROCESS_FULLW   = 3,
-    PROCESS_OFF     = 4,
-    PROCESS_YUV     = 5,
-    PROCESS_CMYK    = 6,
-    PROCESS_HSV     = 7,
-    PROCESS_LAB     = 8,
+enum ProcessingMode {
+    PROCMODE_RGB    = 0,
+    PROCMODE_FULL   = 1,
+    PROCMODE_RGBW   = 2,
+    PROCMODE_FULLW  = 3,
+    PROCMODE_OFF    = 4,
+    PROCMODE_YUV    = 5,
+    PROCMODE_CMYK   = 6,
+    PROCMODE_HSV    = 7,
+    PROCMODE_LAB    = 8,
 };
 
 static const char *process_names[] = {
@@ -114,6 +114,15 @@ enum DrawMode {
     DRAWMODE_GAMMA  = 3,
 };
 
+enum CurveFileType {
+    FILETYPE_AMP = 1,
+    FILETYPE_ACV = 2,
+    FILETYPE_CSV = 3,
+    FILETYPE_CRV = 4,
+    FILETYPE_MAP = 5,
+    FILETYPE_SMARTCURVE_HSV = 6,
+};
+
 struct Gradation {
     int rvalue[3][256];
     int gvalue[3][256];
@@ -121,12 +130,10 @@ struct Gradation {
     int ovalue[5][256];
     Space space_mode;
     Channel channel_mode;
-    Process process;
+    ProcessingMode process;
     int xl;
     int yl;
     int offset;
-    char filename[1024];
-    int filter;
     bool Labprecalc;
     int laboff;
     DrawMode drwmode[5];
@@ -142,7 +149,7 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
 
 void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);
-bool ImportCurve(Gradation &grd);
-void ExportCurve(Gradation &grd);
+bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type);
+void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
 
 #endif // GRADATION_MAIN_H

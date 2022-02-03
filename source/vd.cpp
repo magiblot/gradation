@@ -81,6 +81,7 @@ static LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARA
 struct MyFilterData : Gradation {
     IFilterPreview *ifp;
     int value;
+    char filename[1024];
 };
 
 static ScriptFunctionDef func_defs[]={
@@ -343,17 +344,17 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ShowWindow(hWnd, SW_HIDE);}
             switch (mfd->process)
             {
-                case PROCESS_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
-                case PROCESS_FULL: CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED); break;
-                case PROCESS_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
-                case PROCESS_FULLW: CheckDlgButton(hdlg, IDC_FULLW,BST_CHECKED); break;
-                case PROCESS_OFF:
+                case PROCMODE_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
+                case PROCMODE_FULL: CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED); break;
+                case PROCMODE_RGBW: CheckDlgButton(hdlg, IDC_RGBW,BST_CHECKED); break;
+                case PROCMODE_FULLW: CheckDlgButton(hdlg, IDC_FULLW,BST_CHECKED); break;
+                case PROCMODE_OFF:
                     if (mfd->space_mode != SPACE_RGB) CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
                     else CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED); break;
-                case PROCESS_YUV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_YUV; break;
-                case PROCESS_CMYK: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_CMYK; break;
-                case PROCESS_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_HSV; break;
-                case PROCESS_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_LAB; break;
+                case PROCMODE_YUV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_YUV; break;
+                case PROCMODE_CMYK: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_CMYK; break;
+                case PROCMODE_HSV: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_HSV; break;
+                case PROCMODE_LAB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); mfd->space_mode = SPACE_LAB; break;
             }
             switch  (mfd->drwmode[mfd->channel_mode]) {
                 case DRAWMODE_PEN:
@@ -384,7 +385,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             mfd->ifp->InitButton(GetDlgItem(hdlg, IDPREVIEW));
             return TRUE;
         case WM_PAINT:
-            {   if (mfd->Labprecalc==0 && mfd->process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
+            {   if (mfd->Labprecalc==0 && mfd->process==PROCMODE_LAB) { // build up the LUT for the Lab process if it is not precalculated already
                     hCursor = LoadCursor(NULL, IDC_WAIT);
                     SetCursor (hCursor);
                     PreCalcLut(*mfd);
@@ -717,7 +718,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0Tone Curve File (*.crv)\0*.crv\0Tone Map File (*.map)\0*.map\0SmartCurve HSV (*.amp)\0*.amp\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -734,10 +735,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.lCustData = 0;
                 ofn.lpfnHook = NULL;
                 GetOpenFileName(&ofn);
-                mfd->filter = ofn.nFilterIndex;
                 if (mfd->filename[0] != 0)
                 {
-                    if (!ImportCurve (*mfd))
+                    if (!ImportCurve(*mfd, mfd->filename, CurveFileType(ofn.nFilterIndex)))
                     {
                         MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
                     }
@@ -822,7 +822,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.hwndOwner = hdlg;
                 ofn.hInstance = NULL;
                 ofn.lpTemplateName = NULL;
-                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0All Files\0*.*\0\0";
+                ofn.lpstrFilter = "Map Settings (*.amp)\0*.amp\0Adjustment Curves (*.acv)\0*.acv\0Comma Separated Values (*.csv)\0*.csv\0\0";
                 ofn.lpstrCustomFilter = NULL;
                 ofn.nMaxCustFilter = 0;
                 ofn.nFilterIndex = 1;
@@ -839,10 +839,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.lCustData = 0;
                 ofn.lpfnHook = NULL;
                 GetSaveFileName(&ofn);
-                mfd->filter = ofn.nFilterIndex;
                 if (mfd->filename[0] != 0)
                 {
-                    ExportCurve (*mfd);
+                    ExportCurve(*mfd, mfd->filename, CurveFileType(ofn.nFilterIndex));
                 }
                 break;
                 }
@@ -850,19 +849,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             case IDC_RGB:
                 switch (mfd->space_mode){
                     case SPACE_RGB:
-                    mfd->process = PROCESS_RGB;
+                    mfd->process = PROCMODE_RGB;
                     break;
                     case SPACE_YUV:
-                    mfd->process = PROCESS_YUV;
+                    mfd->process = PROCMODE_YUV;
                     break;
                     case SPACE_CMYK:
-                    mfd->process = PROCESS_CMYK;
+                    mfd->process = PROCMODE_CMYK;
                     break;
                     case SPACE_HSV:
-                    mfd->process = PROCESS_HSV;
+                    mfd->process = PROCMODE_HSV;
                     break;
                     case SPACE_LAB:
-                    mfd->process = PROCESS_LAB;
+                    mfd->process = PROCMODE_LAB;
                     break;
                 }
                 mfd->ifp->RedoFrame();
@@ -870,33 +869,33 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             case IDC_FULL:
                 switch (mfd->space_mode){
                     case SPACE_RGB:
-                    mfd->process = PROCESS_FULL;
+                    mfd->process = PROCMODE_FULL;
                     break;
                     case SPACE_YUV:
-                    mfd->process = PROCESS_OFF;
+                    mfd->process = PROCMODE_OFF;
                     break;
                     case SPACE_CMYK:
-                    mfd->process = PROCESS_OFF;
+                    mfd->process = PROCMODE_OFF;
                     break;
                     case SPACE_HSV:
-                    mfd->process = PROCESS_OFF;
+                    mfd->process = PROCMODE_OFF;
                     break;
                     case SPACE_LAB:
-                    mfd->process = PROCESS_OFF;
+                    mfd->process = PROCMODE_OFF;
                     break;
                 }
                 mfd->ifp->RedoFrame();
             break;
             case IDC_RGBW:
-                mfd->process = PROCESS_RGBW;
+                mfd->process = PROCMODE_RGBW;
                 mfd->ifp->RedoFrame();
             break;
             case IDC_FULLW:
-                mfd->process = PROCESS_FULLW;
+                mfd->process = PROCMODE_FULLW;
                 mfd->ifp->RedoFrame();
             break;
             case IDC_OFF:
-                mfd->process = PROCESS_OFF;
+                mfd->process = PROCMODE_OFF;
                 mfd->ifp->RedoFrame();
             break;
             case IDC_INPUTPLUS:
@@ -1359,7 +1358,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetWindowText (hWnd,"no processing");
                             ShowWindow (hWnd, SW_SHOWNORMAL);
                             SendMessage (hWnd,BM_SETCHECK,0,0L);
-                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_RGB;
+                            if (mfd->process != PROCMODE_OFF) mfd->process = PROCMODE_RGB;
                             break;
                         case SPACE_YUV:
                             for(i=0; i<3; i++)
@@ -1368,7 +1367,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"Y/U/V");
-                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_YUV;
+                            if (mfd->process != PROCMODE_OFF) mfd->process = PROCMODE_YUV;
                             break;
                         case SPACE_CMYK:
                             for(i=0; i<4; i++)
@@ -1377,7 +1376,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"C/M/Y/K");
-                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_CMYK;
+                            if (mfd->process != PROCMODE_OFF) mfd->process = PROCMODE_CMYK;
                             break;
                         case SPACE_HSV:
                             for(i=0; i<3; i++)
@@ -1386,7 +1385,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"H/S/V");
-                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_HSV;
+                            if (mfd->process != PROCMODE_OFF) mfd->process = PROCMODE_HSV;
                             break;
                         case SPACE_LAB:
                             for(i=0; i<3; i++)
@@ -1395,7 +1394,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->offset = 1;
                             hWnd = GetDlgItem(hdlg, IDC_RGB);
                             SetWindowText (hWnd,"L/a/b");
-                            if (mfd->process != PROCESS_OFF) mfd->process = PROCESS_LAB;
+                            if (mfd->process != PROCMODE_OFF) mfd->process = PROCMODE_LAB;
                             if (mfd->Labprecalc==0) { // build up the LUT for the Lab process if it is not precalculated already
                                 hCursor = LoadCursor(NULL, IDC_WAIT);
                                 SetCursor (hCursor);
@@ -1417,11 +1416,11 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             hWnd = GetDlgItem(hdlg, IDC_OFF);
                             ShowWindow (hWnd, SW_HIDE);
                             SendMessage (hWnd,BM_SETCHECK,0,0L);
-                            if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
+                            if (mfd->process != PROCMODE_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
                             else CheckDlgButton(hdlg, IDC_FULL,BST_CHECKED);
                         }
                         else {
-                            if (mfd->process != PROCESS_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
+                            if (mfd->process != PROCMODE_OFF) CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED);
                             else CheckDlgButton(hdlg, IDC_OFF,BST_CHECKED);
                         }
                         hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
@@ -1623,7 +1622,7 @@ static void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *ar
     const char *tmp;
     nf = false;
 
-    mfd->process = Process(argv[0].asInt());
+    mfd->process = ProcessingMode(argv[0].asInt());
     tmp = *argv[1].asString();
     for (j=0; j<5; j++) { //read raw curve data
         for (i=(j*256); i<((j+1)*256); i++) {
