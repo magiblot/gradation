@@ -170,7 +170,8 @@ static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
 static int StartProc(FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-    return StartProcImpl(*mfd);
+    PreCalcLut(*mfd);
+    return 0;
 }
 
 static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
@@ -181,7 +182,7 @@ static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
     uint32_t *dst = (uint32_t *)fa->dst.data;
     PixOffset src_modulo = fa->src.modulo;
     PixOffset dst_modulo = fa->dst.modulo;
-    return RunProcImpl(*mfd, width, height, src, dst, src_modulo, dst_modulo);
+    return Run(*mfd, width, height, src, dst, src_modulo, dst_modulo);
 }
 
 static int EndProc(FilterActivation *, const FilterFunctions *) {
@@ -195,7 +196,7 @@ static void DeinitProc(FilterActivation *, const FilterFunctions *) {
 static int InitProc(FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
     mfd->value = 0;
-    return InitProcImpl(*mfd);
+    return Init(*mfd);
 }
 
 #ifdef _WIN64
@@ -413,8 +414,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             {   if (mfd->Labprecalc==0 && mfd->process==PROCESS_LAB) { // build up the LUT for the Lab process if it is not precalculated already
                     hCursor = LoadCursor(NULL, IDC_WAIT);
                     SetCursor (hCursor);
-                    PreCalcLut();
-                    mfd->Labprecalc = 1;
+                    PreCalcLut(*mfd);
                     hCursor = LoadCursor(NULL, IDC_ARROW);
                     SetCursor (hCursor);}
 
@@ -1424,8 +1424,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             if (mfd->Labprecalc==0) { // build up the LUT for the Lab process if it is not precalculated already
                                 hCursor = LoadCursor(NULL, IDC_WAIT);
                                 SetCursor (hCursor);
-                                PreCalcLut();
-                                mfd->Labprecalc = 1;
+                                PreCalcLut(*mfd);
                                 hCursor = LoadCursor(NULL, IDC_ARROW);
                                 SetCursor (hCursor);}
                             break;
