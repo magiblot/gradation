@@ -1,6 +1,7 @@
 #include <avisynth.h>
 #include "gradation.h"
 
+#include <string>
 #include <memory>
 #include <utility>
 #include <stdlib.h>
@@ -16,7 +17,40 @@ static int stricmp(const char *a, const char *b) noexcept
 
 #endif // _MSC_VER
 
-const AVS_Linkage *AVS_linkage = 0;
+static constexpr std::pair<const char *, int> processingModes[] =
+{
+    {"rgb", PROCMODE_RGB},
+    {"full", PROCMODE_FULL},
+    {"rgbw", PROCMODE_RGBW},
+    {"fullw", PROCMODE_FULLW},
+    {"yuv", PROCMODE_YUV},
+    {"cmyk", PROCMODE_CMYK},
+    {"hsv", PROCMODE_HSV},
+    {"lab", PROCMODE_LAB},
+};
+
+static constexpr std::pair<const char *, int> drawModes[] =
+{
+    {"pen", DRAWMODE_PEN},
+    {"linear", DRAWMODE_LINEAR},
+    {"spline", DRAWMODE_SPLINE},
+    {"gamma", DRAWMODE_GAMMA},
+};
+
+static constexpr std::pair<const char *, int> curveFileTypes[] =
+{
+    {"auto", -1},
+    {"SmartCurve HSV", FILETYPE_SMARTCURVE_HSV},
+};
+
+static constexpr std::pair<const char *, int> curveFileExtensions[] =
+{
+    {".amp", FILETYPE_AMP},
+    {".acv", FILETYPE_ACV},
+    {".csv", FILETYPE_CSV},
+    {".crv", FILETYPE_CRV},
+    {".map", FILETYPE_MAP},
+};
 
 class GradationFilter : public GenericVideoFilter
 {
@@ -31,16 +65,18 @@ class GradationFilter : public GenericVideoFilter
     int __stdcall SetCacheHints(int cachehints, int frame_range) override;
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
 
-    static ProcessingMode parseProcessingMode(int, IScriptEnvironment *);
-    static DrawMode parseDrawMode(int, IScriptEnvironment *);
-    static CurveFileType parseCurveFileType(const char *, int, IScriptEnvironment *);
+    static int parseEnumImpl(const char *, const char *, const std::pair<const char *, int> *, size_t, IScriptEnvironment *);
+    template <class T, size_t N>
+    static T parseEnum(const char *, const char *, const std::pair<const char *, int>(&)[N], IScriptEnvironment *);
+
+    static CurveFileType parseCurveFileType(const char *, const char *, const char *, IScriptEnvironment *);
 
     enum { iChild, iPmode, iDrawmode, iFile, iFtype };
 
     static const char *Name()
         { return "Gradation"; }
     static const char *Signature()
-        { return "c[pmode]i[drawmode]i[file]s[ftype]i"; }
+        { return "c[pmode]s[drawmode]s[file]s[ftype]s"; }
     static AVSValue __cdecl Create(AVSValue args, void *, IScriptEnvironment *env);
 
 public:
@@ -73,43 +109,42 @@ PVideoFrame __stdcall GradationFilter::GetFrame(int n, IScriptEnvironment* env)
     return dst;
 }
 
-ProcessingMode GradationFilter::parseProcessingMode(int p, IScriptEnvironment *env)
+int GradationFilter::parseEnumImpl(const char *str, const char *argName, const std::pair<const char *, int> *mappings, size_t count, IScriptEnvironment *env)
 {
-    if (p < PROCMODE_RGB || PROCMODE_LAB < p)
-        env->ThrowError("%s: Invalid 'pmode' %d. Expected a value in the range [0..8]", Name(), p);
-    return ProcessingMode(p);
+    for (size_t i = 0; i < count; ++i)
+        if (stricmp(str, mappings[i].first) == 0)
+            return mappings[i].second;
+
+    std::string enumList {"'"};
+    if (count > 0)
+        enumList.append(mappings[0].first);
+    for (size_t i = 1; i < count; ++i)
+        enumList.append("', '"),
+        enumList.append(mappings[i].first);
+    enumList.append("'"),
+
+    env->ThrowError("%s: Invalid '%s': '%s'. Expected one of: %s", Name(), argName, str, enumList.c_str());
+    abort();
 }
 
-DrawMode GradationFilter::parseDrawMode(int d, IScriptEnvironment *env)
+template <class T, size_t N>
+inline T GradationFilter::parseEnum(const char *str, const char *argName, const std::pair<const char *, int> (&mappings)[N], IScriptEnvironment *env)
 {
-    if (d < DRAWMODE_PEN || DRAWMODE_GAMMA < d)
-        env->ThrowError("%s: Invalid 'drawmode' %d. Expected a value in the range [0..3]", Name(), d);
-    return DrawMode(d);
+    return T(parseEnumImpl(str, argName, mappings, N, env));
 }
 
-CurveFileType GradationFilter::parseCurveFileType(const char *filename, int type, IScriptEnvironment *env)
+CurveFileType GradationFilter::parseCurveFileType(const char *filename, const char *ftype, const char *argName, IScriptEnvironment *env)
 {
-    if (0 <= type)
-    {
-        if (type < FILETYPE_AMP || FILETYPE_SMARTCURVE_HSV < type)
-            env->ThrowError("%s: Invalid 'ftype' %d. Expected a value in the range [1..6]", Name(), type);
-        return CurveFileType(type);
-    }
+    CurveFileType type = parseEnum<CurveFileType>(ftype, argName, curveFileTypes, env);
+    if (type != CurveFileType(-1))
+        return type;
     size_t length = strlen(filename);
     if (length >= 4)
     {
-        static const struct { const char *ext; CurveFileType type; } formats[] =
-        {
-            {".amp", FILETYPE_AMP},
-            {".acv", FILETYPE_ACV},
-            {".csv", FILETYPE_CSV},
-            {".crv", FILETYPE_CRV},
-            {".map", FILETYPE_MAP},
-        };
         const char *ext = filename + length - 4;
-        for (auto &f : formats)
-            if (stricmp(ext, f.ext) == 0)
-                return f.type;
+        for (auto &m : curveFileExtensions)
+            if (stricmp(ext, m.first) == 0)
+                return CurveFileType(m.second);
     }
     env->ThrowError("%s: Cannot determine type of file '%s'", Name(), filename);
     abort();
@@ -120,7 +155,7 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     auto &&grd = std::make_unique<Gradation>();
     Init(*grd);
 
-    if (!args[iPmode].IsInt())
+    if (!args[iPmode].IsString())
         env->ThrowError("%s: Missing parameter 'pmode'", Name());
     if (!args[iFile].IsString())
         env->ThrowError("%s: Missing parameter 'file'", Name());
@@ -130,9 +165,9 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     if (!vi.IsRGB32())
         env->ThrowError("%s: Source must be RGB32", Name());
 
-    grd->process = parseProcessingMode(args[iPmode].AsInt(), env);
-    DrawMode drawMode = parseDrawMode(args[iDrawmode].AsInt(2), env);
-    CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsInt(-1), env);
+    grd->process = parseEnum<ProcessingMode>(args[iPmode].AsString(), "pmode", processingModes, env);
+    DrawMode drawMode = parseEnum<DrawMode>(args[iDrawmode].AsString("spline"), "drawmode", drawModes, env);
+    CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsString("auto"), "ftype", env);
     if (!ImportCurve(*grd, args[iFile].AsString(), type, drawMode))
         env->ThrowError("%s: Cannot open file '%s'", Name(), args[iFile].AsString());
 
@@ -140,6 +175,8 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
     return new GradationFilter(child, grd);
 }
+
+const AVS_Linkage *AVS_linkage = 0;
 
 extern "C" __declspec(dllexport) const char* __cdecl AvisynthPluginInit3(IScriptEnvironment* env, AVS_Linkage* vectors)
 {
