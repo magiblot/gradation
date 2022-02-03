@@ -49,7 +49,7 @@ void PreCalcLut(Gradation &grd) {
     }
 }
 
-int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo) {
+int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch) {
     int32_t w, h;
 
     int r;
@@ -73,6 +73,8 @@ int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *
     int lab;
 
     uint32_t old_pixel, new_pixel, med_pixel;
+    int32_t src_modulo = src_pitch - width*sizeof(*src);
+    int32_t dst_modulo = dst_pitch - width*sizeof(*dst);
 
     switch(grd.process)
     {
