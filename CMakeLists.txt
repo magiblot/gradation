@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.5)
 project(gradation)
 
 add_library(gradation-vd SHARED
-    Source/gradation.rc
-    Source/gradation.cpp
-    Source/vd.cpp
+    source/gradation.cpp
+    source/gradation.rc
+    source/vd.cpp
 )
 
 set_target_properties(gradation-vd PROPERTIES OUTPUT_NAME "gradation")
