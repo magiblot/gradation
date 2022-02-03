@@ -32,12 +32,15 @@ class GradationFilter : public GenericVideoFilter
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
 
     static ProcessingMode parseProcessingMode(int, IScriptEnvironment *);
+    static DrawMode parseDrawMode(int, IScriptEnvironment *);
     static CurveFileType parseCurveFileType(const char *, int, IScriptEnvironment *);
+
+    enum { iChild, iPmode, iDrawmode, iFile, iFtype };
 
     static const char *Name()
         { return "Gradation"; }
     static const char *Signature()
-        { return "c[pmode]i[file]s[ftype]i"; }
+        { return "c[pmode]i[drawmode]i[file]s[ftype]i"; }
     static AVSValue __cdecl Create(AVSValue args, void *, IScriptEnvironment *env);
 
 public:
@@ -77,6 +80,13 @@ ProcessingMode GradationFilter::parseProcessingMode(int p, IScriptEnvironment *e
     return ProcessingMode(p);
 }
 
+DrawMode GradationFilter::parseDrawMode(int d, IScriptEnvironment *env)
+{
+    if (d < DRAWMODE_PEN || DRAWMODE_GAMMA < d)
+        env->ThrowError("%s: Invalid 'drawmode' %d. Expected a value in the range [0..3]", Name(), d);
+    return DrawMode(d);
+}
+
 CurveFileType GradationFilter::parseCurveFileType(const char *filename, int type, IScriptEnvironment *env)
 {
     if (0 <= type)
@@ -110,20 +120,21 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     auto &&grd = std::make_unique<Gradation>();
     Init(*grd);
 
-    if (!args[1].IsInt())
+    if (!args[iPmode].IsInt())
         env->ThrowError("%s: Missing parameter 'pmode'", Name());
-    if (!args[2].IsString())
+    if (!args[iFile].IsString())
         env->ThrowError("%s: Missing parameter 'file'", Name());
 
-    auto &&child = args[0].AsClip();
+    auto &&child = args[iChild].AsClip();
     auto &vi = child->GetVideoInfo();
     if (!vi.IsRGB32())
         env->ThrowError("%s: Source must be RGB32", Name());
 
-    grd->process = parseProcessingMode(args[1].AsInt(), env);
-    CurveFileType type = parseCurveFileType(args[2].AsString(), args[3].AsInt(-1), env);
-    if (!ImportCurve(*grd, args[2].AsString(), type))
-        env->ThrowError("%s: Cannot open file '%s'", Name(), args[2].AsString());
+    grd->process = parseProcessingMode(args[iPmode].AsInt(), env);
+    DrawMode drawMode = parseDrawMode(args[iDrawmode].AsInt(2), env);
+    CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsInt(-1), env);
+    if (!ImportCurve(*grd, args[iFile].AsString(), type, drawMode))
+        env->ThrowError("%s: Cannot open file '%s'", Name(), args[iFile].AsString());
 
     PreCalcLut(*grd);
 

@@ -372,7 +372,7 @@ int Init(Gradation &grd) {
     grd.offset = 0;
     grd.psel=false;
     grd.cp=0;
-    _snprintf(grd.gamma, 10, "%.3lf",1.000);
+    sprintf(grd.gamma, "%.3lf", 1.000);
     for (i=0; i<256; i++) {
         grd.ovalue[0][i] = i;
         grd.rvalue[0][i]=(grd.ovalue[0][i]<<16);
@@ -474,7 +474,7 @@ void CalcCurve(Gradation &grd)
             dxg=grd.drwpoint[grd.channel_mode][1][0]-grd.drwpoint[grd.channel_mode][0][0];
             dyg=grd.drwpoint[grd.channel_mode][1][1]-grd.drwpoint[grd.channel_mode][0][1];
             ga=log(double(dyg)/double(dy))/log(double(dxg)/double(dx));
-            _snprintf(grd.gamma, 10, "%.3lf",(1/ga));
+            sprintf(grd.gamma, "%.3lf", 1/ga);
             for (c1=0; c1<dx+1; c1++){
                 grd.ovalue[grd.channel_mode][c1+grd.drwpoint[grd.channel_mode][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[grd.channel_mode][0][1];
             }
@@ -562,7 +562,7 @@ static void PreCalcLab2Rgb(int *labrgb)
     }
 }
 
-bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type)
+bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode)
 {
     FILE *pFile;
     int i;
@@ -625,7 +625,7 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type)
             grd.cp=0;
             Channel cmtmp=grd.channel_mode;
             for (i=0;i<5;i++) { // calculate curve values
-                grd.drwmode[i]=DRAWMODE_SPLINE;
+                grd.drwmode[i]=defDrawMode;
                 grd.channel_mode=Channel(i);
                 CalcCurve(grd);}
             grd.channel_mode=cmtmp;
