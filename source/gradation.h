@@ -153,7 +153,7 @@ int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint
 
 void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);
-bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type);
+bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode=DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
 
 #endif // GRADATION_MAIN_H

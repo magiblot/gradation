@@ -20,23 +20,23 @@ endfunction()
 
 # Target gradation-vd
 
-add_library(gradation-vd SHARED
-    source/gradation.cpp
-    source/gradation.rc
-    source/vd.cpp
-)
-
-set_target_properties(gradation-vd PROPERTIES OUTPUT_NAME "gradation")
-set_target_properties(gradation-vd PROPERTIES SUFFIX ".vdf")
-
-target_include_directories(gradation-vd PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}/include"
-    "${CMAKE_CURRENT_LIST_DIR}/include/vd2/OldFilterSdk"
-)
-
-common_compile_settings(gradation-vd)
-
 if (WIN32)
+    add_library(gradation-vd SHARED
+        source/gradation.cpp
+        source/gradation.rc
+        source/vd.cpp
+    )
+
+    set_target_properties(gradation-vd PROPERTIES OUTPUT_NAME "gradation")
+    set_target_properties(gradation-vd PROPERTIES SUFFIX ".vdf")
+
+    target_include_directories(gradation-vd PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/include"
+        "${CMAKE_CURRENT_LIST_DIR}/include/vd2/OldFilterSdk"
+    )
+
+    common_compile_settings(gradation-vd)
+
     target_link_libraries(gradation-vd PRIVATE
         Comctl32
     )
