@@ -49,7 +49,7 @@ void PreCalcLut(Gradation &grd) {
     }
 }
 
-int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch) {
+void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch) {
     int32_t w, h;
 
     int r;
@@ -352,10 +352,9 @@ int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint
         }
     break;
     }
-    return 0;
 }
 
-int Init(Gradation &grd) {
+void Init(Gradation &grd) {
     int i;
 
     grd.Labprecalc = 0;
@@ -367,11 +366,6 @@ int Init(Gradation &grd) {
         grd.drwpoint[i][1][0]=255;
         grd.drwpoint[i][1][1]=255;}
     grd.process = PROCMODE_RGB;
-    grd.xl = 300;
-    grd.yl = 300;
-    grd.offset = 0;
-    grd.psel=false;
-    grd.cp=0;
     sprintf(grd.gamma, "%.3lf", 1.000);
     for (i=0; i<256; i++) {
         grd.ovalue[0][i] = i;
@@ -387,7 +381,6 @@ int Init(Gradation &grd) {
         grd.ovalue[3][i] = i;
         grd.ovalue[4][i] = i;
     }
-    return 0;
 }
 
 void CalcCurve(Gradation &grd)
@@ -411,7 +404,11 @@ void CalcCurve(Gradation &grd)
     double b[16];
     double c[16];
 
-    if (grd.drwpoint[grd.channel_mode][0][0]>0) {for (c2=0;c2<grd.drwpoint[grd.channel_mode][0][0];c2++){grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][0][1];}}
+    if (grd.drwpoint[grd.channel_mode][0][0]>0) {
+        for (c2=0;c2<grd.drwpoint[grd.channel_mode][0][0];c2++) {
+            grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][0][1];
+        }
+    }
     switch (grd.drwmode[grd.channel_mode]){
         case DRAWMODE_LINEAR:
             for (c1=0; c1<(grd.poic[grd.channel_mode]-1); c1++){
@@ -622,12 +619,12 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     grd.drwpoint[i][1][0]=255;
                     grd.drwpoint[i][1][1]=255;}
                 noocur=5;}
-            grd.cp=0;
             Channel cmtmp=grd.channel_mode;
             for (i=0;i<5;i++) { // calculate curve values
                 grd.drwmode[i]=defDrawMode;
                 grd.channel_mode=Channel(i);
-                CalcCurve(grd);}
+                CalcCurve(grd);
+            }
             grd.channel_mode=cmtmp;
             nrf=true;
         }
@@ -736,7 +733,6 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
             if (grd.drwmode[i]!=DRAWMODE_PEN) {CalcCurve(grd);}
         }
         grd.channel_mode=cmtmp;
-        grd.cp=0;
         nrf=true;
     }
     else if (type == FILETYPE_SMARTCURVE_HSV)

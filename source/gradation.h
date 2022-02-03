@@ -131,21 +131,15 @@ struct Gradation {
     Space space_mode;
     Channel channel_mode;
     ProcessingMode process;
-    int xl;
-    int yl;
-    int offset;
     bool Labprecalc;
-    int laboff;
     DrawMode drwmode[5];
     int drwpoint[5][16][2];
     int poic[5];
-    int cp;
-    bool psel;
     char gamma[10];
 };
 
-int Init(Gradation &grd);
-int Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
+void Init(Gradation &grd);
+void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
 
 void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);

@@ -81,6 +81,12 @@ static LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARA
 struct MyFilterData : Gradation {
     IFilterPreview *ifp;
     int value;
+    int xl;
+    int yl;
+    int offset;
+    int laboff;
+    int cp;
+    bool psel;
     char filename[1024];
 };
 
@@ -156,13 +162,10 @@ static int StartProc(FilterActivation *fa, const FilterFunctions *) {
 
 static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-    PixDim width = fa->src.w;
-    PixDim height = fa->src.h;
     uint32_t *src = (uint32_t *)fa->src.data;
     uint32_t *dst = (uint32_t *)fa->dst.data;
-    PixOffset src_pitch = fa->src.pitch;
-    PixOffset dst_pitch = fa->dst.pitch;
-    return Run(*mfd, width, height, src, dst, src_pitch, dst_pitch);
+    Run(*mfd, fa->src.w, fa->src.h, src, dst, fa->src.pitch, fa->dst.pitch);
+    return 0;
 }
 
 static int EndProc(FilterActivation *, const FilterFunctions *) {
@@ -175,8 +178,15 @@ static void DeinitProc(FilterActivation *, const FilterFunctions *) {
 
 static int InitProc(FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
+    Init(*mfd);
     mfd->value = 0;
-    return Init(*mfd);
+    mfd->xl = 300;
+    mfd->yl = 300;
+    mfd->laboff = 0;
+    mfd->offset = 0;
+    mfd->cp = 0;
+    mfd->psel = false;
+    return 0;
 }
 
 #ifdef _WIN64
