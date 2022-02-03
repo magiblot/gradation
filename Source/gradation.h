@@ -8,8 +8,8 @@ typedef long int32_t;
 typedef unsigned long uint32_t;
 #endif
 
-extern int *rgblab; //LUT Lab
-extern int *labrgb; //LUT Lab
+extern int rgblab[]; //LUT Lab
+extern int labrgb[]; //LUT Lab
 
 enum Space {
     SPACE_RGB               = 0,
@@ -137,11 +137,10 @@ struct Gradation {
     char gamma[10];
 };
 
-int StartProcImpl(Gradation &grd);
-int RunProcImpl(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo);
-int InitProcImpl(Gradation &grd);
+int Init(Gradation &grd);
+int Run(Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo);
 
-void PreCalcLut();
+void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);
 bool ImportCurve(Gradation &grd);
 void ExportCurve(Gradation &grd);
