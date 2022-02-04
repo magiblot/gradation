@@ -31,7 +31,6 @@ static constexpr std::pair<const char *, int> processingModes[] =
 
 static constexpr std::pair<const char *, int> drawModes[] =
 {
-    {"pen", DRAWMODE_PEN},
     {"linear", DRAWMODE_LINEAR},
     {"spline", DRAWMODE_SPLINE},
     {"gamma", DRAWMODE_GAMMA},
