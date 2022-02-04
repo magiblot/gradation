@@ -174,6 +174,8 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 ///////////////////////////////////////////////////////////////////////////
 
+static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg);
+static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode);
 static void GrdDrawGradTable(HWND hWnd, int table[], int laboff, DrawMode dmode, int dp[16][2], int pc, int ap);
 static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
@@ -356,28 +358,15 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
             SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
             mfd->channel_mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
-            if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
+            if (mfd->drwmode[mfd->channel_mode] != DRAWMODE_PEN) {
                 SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                 SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    ShowWindow(hWnd, SW_SHOW);
-                    SetWindowText(hWnd, mfd->gamma);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                    ShowWindow(hWnd, SW_SHOW);}
-            }
-            else {
+            } else {
                 SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
-                hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                ShowWindow(hWnd, SW_HIDE);
-                hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                ShowWindow(hWnd, SW_HIDE);
-                hWnd = GetDlgItem(hdlg, IDC_POINT);
-                ShowWindow(hWnd, SW_HIDE);
-                hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                ShowWindow(hWnd, SW_HIDE);}
+            }
+            UpdateItemVisibility(mfd, hdlg);
             switch (mfd->process)
             {
                 case PROCMODE_RGB: CheckDlgButton(hdlg, IDC_RGB,BST_CHECKED); break;
@@ -774,53 +763,21 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.lCustData = 0;
                 ofn.lpfnHook = NULL;
                 GetOpenFileName(&ofn);
-                if (mfd->filename[0] != 0)
-                {
-                    if (!ImportCurve(*mfd, mfd->filename, CurveFileType(ofn.nFilterIndex)))
-                    {
-                        MessageBox (NULL, TEXT ("Error"), TEXT ("Error opening file"),0);
+                if (mfd->filename[0] != 0) {
+                    if (!ImportCurve(*mfd, mfd->filename, CurveFileType(ofn.nFilterIndex))) {
+                        MessageBox(NULL, TEXT("Error"), TEXT("Error opening file"), 0);
                     }
-                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
-                        hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINT);
-                        ShowWindow(hWnd, SW_HIDE);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                        ShowWindow(hWnd, SW_HIDE);
+                    if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                         mfd->value=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
-                    else {
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    } else {
                         mfd->cp=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA) {
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            ShowWindow(hWnd, SW_SHOW);
-                            SetWindowText(hWnd, mfd->gamma);
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                            ShowWindow(hWnd, SW_SHOW);}
-                        else {
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                            ShowWindow(hWnd, SW_HIDE);}
-                        hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINT);
-                        ShowWindow(hWnd, SW_SHOW);
-                        hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                        ShowWindow(hWnd, SW_SHOW);
                     }
+                    UpdateItemVisibility(mfd, hdlg);
                     switch  (mfd->drwmode[mfd->channel_mode]) {
                         case DRAWMODE_PEN:
                             CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
@@ -878,8 +835,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 ofn.lCustData = 0;
                 ofn.lpfnHook = NULL;
                 GetSaveFileName(&ofn);
-                if (mfd->filename[0] != 0)
-                {
+                if (mfd->filename[0] != 0) {
                     ExportCurve(*mfd, mfd->filename, CurveFileType(ofn.nFilterIndex));
                 }
                 break;
@@ -1251,120 +1207,16 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 mfd->ifp->RedoFrame();
                 break;
             case IDC_RADIOPM:
-                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_PEN){
-                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_PEN;
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)],mfd->cp);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINT);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                    ShowWindow(hWnd, SW_HIDE);
-                    mfd->value=0;
-                    SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    mfd->ifp->RedoFrame();
-                }
+                EnableDrawMode(mfd, hdlg, DRAWMODE_PEN);
                 break;
             case IDC_RADIOLM:
-                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_LINEAR){
-                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
-                        mfd->poic[mfd->channel_mode]=2;
-                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
-                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
-                        mfd->drwpoint[mfd->channel_mode][1][0]=255;
-                        mfd->drwpoint[mfd->channel_mode][1][1]=255;
-                        mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_LINEAR;
-                    CalcCurve(*mfd);
-                    SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINT);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                    ShowWindow(hWnd, SW_SHOW);
-                    mfd->ifp->RedoFrame();
-                }
+                EnableDrawMode(mfd, hdlg, DRAWMODE_LINEAR);
                 break;
             case IDC_RADIOSM:
-                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_SPLINE){
-                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN) {
-                        mfd->poic[mfd->channel_mode]=2;
-                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
-                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
-                        mfd->drwpoint[mfd->channel_mode][1][0]=255;
-                        mfd->drwpoint[mfd->channel_mode][1][1]=255;
-                        mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_SPLINE;
-                    CalcCurve(*mfd);
-                    SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                    ShowWindow(hWnd, SW_HIDE);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINT);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                    ShowWindow(hWnd, SW_SHOW);
-                    mfd->ifp->RedoFrame();
-                }
+                EnableDrawMode(mfd, hdlg, DRAWMODE_SPLINE);
                 break;
             case IDC_RADIOGM:
-                if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
-                    if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN || mfd->poic[mfd->channel_mode]!=3) {
-                        mfd->poic[mfd->channel_mode]=3;
-                        mfd->drwpoint[mfd->channel_mode][0][0]=0;
-                        mfd->drwpoint[mfd->channel_mode][0][1]=0;
-                        mfd->drwpoint[mfd->channel_mode][1][0]=128;
-                        mfd->drwpoint[mfd->channel_mode][1][1]=128;
-                        mfd->drwpoint[mfd->channel_mode][2][0]=255;
-                        mfd->drwpoint[mfd->channel_mode][2][1]=255;
-                        mfd->cp=0;}
-                    mfd->drwmode[mfd->channel_mode]=DRAWMODE_GAMMA;
-                    CalcCurve(*mfd);
-                    SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                    SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                    ShowWindow(hWnd, SW_SHOW);
-                    SetWindowText(hWnd, mfd->gamma);
-                    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINT);
-                    ShowWindow(hWnd, SW_SHOW);
-                    hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                    ShowWindow(hWnd, SW_SHOW);
-                    mfd->ifp->RedoFrame();
-                }
+                EnableDrawMode(mfd, hdlg, DRAWMODE_GAMMA);
                 break;
             case IDC_SPACE:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
@@ -1466,70 +1318,18 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
                         mfd->channel_mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                        if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                            ShowWindow(hWnd, SW_HIDE);}
-                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
+                        if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINT);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                            ShowWindow(hWnd, SW_HIDE);}
-                        else {
+                        } else {
                             CalcCurve(*mfd);
                             mfd->cp=0;
-                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINT);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                            ShowWindow(hWnd, SW_SHOW);
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
-                                hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                                ShowWindow(hWnd, SW_SHOW);
-                                SetWindowText(hWnd, mfd->gamma);
-                                hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                                ShowWindow(hWnd, SW_SHOW);}
                         }
-                        switch  (mfd->drwmode[mfd->channel_mode]) {
-                            case DRAWMODE_PEN:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_LINEAR:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_SPLINE:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_GAMMA:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
-                                break;
-                        }
+                        UpdateItemVisibility(mfd, hdlg);
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                         mfd->ifp->RedoFrame();
@@ -1547,70 +1347,18 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             else {mfd->laboff = 0;}
                         }
                         else {mfd->laboff = 0;}
-                        if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                            ShowWindow(hWnd, SW_HIDE);}
-                        if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
+                        if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINT);
-                            ShowWindow(hWnd, SW_HIDE);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                            ShowWindow(hWnd, SW_HIDE);}
-                        else {
+                        } else {
                             CalcCurve(*mfd);
                             mfd->cp=0;
-                            hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINT);
-                            ShowWindow(hWnd, SW_SHOW);
-                            hWnd = GetDlgItem(hdlg, IDC_POINTNO);
-                            ShowWindow(hWnd, SW_SHOW);
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
-                                hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
-                                ShowWindow(hWnd, SW_SHOW);
-                                SetWindowText(hWnd, mfd->gamma);
-                                hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
-                                ShowWindow(hWnd, SW_SHOW);}
                         }
-                        switch  (mfd->drwmode[mfd->channel_mode]) {
-                            case DRAWMODE_PEN:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_LINEAR:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_SPLINE:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_CHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_UNCHECKED);
-                                break;
-                            case DRAWMODE_GAMMA:
-                                CheckDlgButton(hdlg, IDC_RADIOPM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOLM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOSM, BST_UNCHECKED);
-                                CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
-                                break;
-                        }
+                        UpdateItemVisibility(mfd, hdlg);
                         GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                         mfd->ifp->RedoFrame();
@@ -1752,6 +1500,66 @@ static bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, 
     return false;
 }
 
+static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg)
+{
+    HWND hWnd;
+
+    bool isPen = mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN;
+    hWnd = GetDlgItem(hdlg, IDC_POINTMINUS);
+    ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
+    hWnd = GetDlgItem(hdlg, IDC_POINTPLUS);
+    ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
+    hWnd = GetDlgItem(hdlg, IDC_POINT);
+    ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
+    hWnd = GetDlgItem(hdlg, IDC_POINTNO);
+    ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
+
+    bool isGamma = mfd->drwmode[mfd->channel_mode] == DRAWMODE_GAMMA;
+    hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
+    ShowWindow(hWnd, isGamma ? SW_SHOW : SW_HIDE);
+    SetWindowText(hWnd, mfd->gamma);
+    hWnd = GetDlgItem(hdlg, IDC_GAMMADSC);
+    ShowWindow(hWnd, isGamma ? SW_SHOW : SW_HIDE);
+}
+
+static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode)
+{
+    DrawMode oldMode = mfd->drwmode[mfd->channel_mode];
+    if (oldMode != newMode) {
+        if (oldMode == DRAWMODE_PEN && (newMode == DRAWMODE_LINEAR || newMode == DRAWMODE_SPLINE)) {
+            mfd->poic[mfd->channel_mode] = 2;
+            mfd->drwpoint[mfd->channel_mode][0][0] = 0;
+            mfd->drwpoint[mfd->channel_mode][0][1] = 0;
+            mfd->drwpoint[mfd->channel_mode][1][0] = 255;
+            mfd->drwpoint[mfd->channel_mode][1][1] = 255;
+            mfd->cp = 0;
+        } else if ((oldMode == DRAWMODE_PEN || mfd->poic[mfd->channel_mode] != 3) && newMode == DRAWMODE_GAMMA) {
+            mfd->poic[mfd->channel_mode] = 3;
+            mfd->drwpoint[mfd->channel_mode][0][0] = 0;
+            mfd->drwpoint[mfd->channel_mode][0][1] = 0;
+            mfd->drwpoint[mfd->channel_mode][1][0] = 128;
+            mfd->drwpoint[mfd->channel_mode][1][1] = 128;
+            mfd->drwpoint[mfd->channel_mode][2][0] = 255;
+            mfd->drwpoint[mfd->channel_mode][2][1] = 255;
+            mfd->cp = 0;
+        }
+        mfd->drwmode[mfd->channel_mode] = newMode;
+        if (newMode == DRAWMODE_PEN) {
+            mfd->value = 0;
+            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
+            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+        } else {
+            CalcCurve(*mfd);
+            SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
+            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
+            SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
+        }
+        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+        UpdateItemVisibility(mfd, hdlg);
+        mfd->ifp->RedoFrame();
+    }
+}
+
 static void GrdDrawGradTable(HWND hWnd, int table[], int loff, DrawMode dmode, int dp[16][2], int pc, int ap)  // draw the curve
 {
     RECT rect;
@@ -1761,9 +1569,6 @@ static void GrdDrawGradTable(HWND hWnd, int table[], int loff, DrawMode dmode, i
     GetClientRect(hWnd, &rect);
     double scaleX;
     double scaleY;
-    char *tmp;
-    tmp = "";
-    int buflen=1000;
     int loffx;
     int loffy;
 
