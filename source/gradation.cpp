@@ -85,7 +85,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             {
                 old_pixel = *src++;
                 new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue[0][(old_pixel & 0x0000FF)];
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -99,7 +99,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 old_pixel = *src++;
                 med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];
                 new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue[0][(med_pixel & 0x0000FF)];
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -122,7 +122,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                     b = b+grd.bvalue[bw];
                     if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -146,7 +146,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                     b = b+grd.bvalue[bw];
                     if (b<0) b=0; else if (b>255) b=255;
                 new_pixel = (r+g+b);
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -190,7 +190,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 bb = (32768 + x + 116130 * y); //correct rounding +32768
                 if (bb<0) {b=0;} else if (bb>16711680) {b=255;} else {b = bb>>16;}
                 new_pixel = (r+g+b);
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -239,7 +239,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 b = 255-((((z*(256-v))+128)>>8)+v); //correct rounding bb+128;
                 if (b<0) b=0;
                 new_pixel = ((r<<16)+(g<<8)+b);
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -323,7 +323,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                     }
                 }
                 new_pixel = ((r<<16)+(g<<8)+b);
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -345,7 +345,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 z = grd.ovalue[3][bb];
                 //Lab to XYZ
                 new_pixel = labrgb[((x<<16)+(y<<8)+z)];
-                *dst++ = new_pixel;
+                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
