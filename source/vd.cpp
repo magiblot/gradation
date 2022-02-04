@@ -1513,6 +1513,8 @@ static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg)
     ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
     hWnd = GetDlgItem(hdlg, IDC_POINTNO);
     ShowWindow(hWnd, isPen ? SW_HIDE : SW_SHOW);
+    hWnd = GetDlgItem(hdlg, IDC_SMOOTH);
+    EnableWindow(hWnd, isPen);
 
     bool isGamma = mfd->drwmode[mfd->channel_mode] == DRAWMODE_GAMMA;
     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
