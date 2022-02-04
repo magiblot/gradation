@@ -16,6 +16,8 @@ See the [original Readme](https://neosol.at/vdub/readme.html).
 
 ## AviSynth
 
+AviSynth+ 3.7.1 or newer required.
+
 **Gradation(clip *clip*, string *pmode*, string *drawmode* [, array *points*] [, string *file*, string *ftype*])**
 
 * *clip* **clip** = *(required)*
@@ -51,7 +53,7 @@ See the [original Readme](https://neosol.at/vdub/readme.html).
     \   ]
     ```
 
-    It no list of points is provided for some channel, an empty list is assumed. An empty list of points is treated like `[[0, 0], [255, 255]]`.
+    If no list of points is provided for some channel, an empty list is assumed. An empty list of points is treated like `[[0, 0], [255, 255]]`.
 
     The channels for each processing mode are:
 
