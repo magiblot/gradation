@@ -131,7 +131,6 @@ struct Gradation {
     int gvalue[3][256];
     int bvalue[256];
     uint8_t ovalue[5][256];
-    Space space_mode;
     Channel channel_mode;
     ProcessingMode process;
     bool Labprecalc;
@@ -148,5 +147,35 @@ void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd);
 bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode=DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
+
+inline Space GetSpace(ProcessingMode process) {
+    switch (process) {
+        case PROCMODE_YUV:  return SPACE_YUV;
+        case PROCMODE_CMYK: return SPACE_CMYK;
+        case PROCMODE_HSV:  return SPACE_HSV;
+        case PROCMODE_LAB:  return SPACE_LAB;
+        default:            return SPACE_RGB;
+    }
+};
+
+inline int GetChannelCount(Space space) {
+    switch (space) {
+        case SPACE_YUV:  return 3;
+        case SPACE_CMYK: return 4;
+        case SPACE_HSV:  return 3;
+        case SPACE_LAB:  return 3;
+        default:         return 4;
+    }
+};
+
+inline int GetFirstChannel(Space space) {
+    switch (space) {
+        case SPACE_YUV:  return CHANNEL_Y;
+        case SPACE_CMYK: return CHANNEL_CYAN;
+        case SPACE_HSV:  return CHANNEL_HUE;
+        case SPACE_LAB:  return CHANNEL_L;
+        default:         return CHANNEL_RGB;
+    }
+};
 
 #endif // GRADATION_MAIN_H

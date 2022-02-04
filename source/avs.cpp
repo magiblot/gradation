@@ -70,13 +70,14 @@ class GradationFilter : public GenericVideoFilter
     static T parseEnum(const char *, const char *, const std::pair<const char *, int>(&)[N], IScriptEnvironment *);
 
     static CurveFileType parseCurveFileType(const char *, const char *, const char *, IScriptEnvironment *);
+    static void parsePoints(Gradation &, DrawMode, const AVSValue &, const char *Name, IScriptEnvironment *);
 
-    enum { iChild, iPmode, iDrawmode, iFile, iFtype };
+    enum { iChild, iPmode, iDrawmode, iPoints, iFile, iFtype };
 
     static const char *Name()
         { return "Gradation"; }
     static const char *Signature()
-        { return "c[pmode]s[drawmode]s[file]s[ftype]s"; }
+        { return "c[pmode]s[drawmode]s[points].[file]s[ftype]s"; }
     static AVSValue __cdecl Create(AVSValue args, void *, IScriptEnvironment *env);
 
 public:
@@ -150,6 +151,48 @@ CurveFileType GradationFilter::parseCurveFileType(const char *filename, const ch
     abort();
 }
 
+void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSValue &elems, const char *argName, IScriptEnvironment *env)
+{
+    Space space = GetSpace(grd.process);
+    int channelCount = GetChannelCount(space);
+    int firstChannel = GetFirstChannel(space);
+    if (elems.ArraySize() > channelCount)
+        env->ThrowError("%s: Too many lists of points (%d). Space '%s' only has %d channels", Name(), elems.ArraySize(), space_names[space], channelCount);
+    for (int l = 0; l < elems.ArraySize(); ++l)
+    {
+        auto &points = elems[l];
+        if (!points.IsArray())
+            env->ThrowError("%s: In list %d of '%s': Not an array", Name(), l, argName);
+        if (maxPoints < points.ArraySize() )
+            env->ThrowError("%s: In list %d of '%s': Can't have more than %d points", Name(), l, argName, maxPoints);
+        Channel ch = Channel(l + firstChannel);
+        int16_t pts[256] {0};
+        int count = 0;
+        for (int p = 0; p < points.ArraySize(); ++p, ++count)
+        {
+            auto &point = points[p];
+            if (!point.IsArray() || point.ArraySize() != 2 || !point[0].IsInt() || !point[1].IsInt())
+                env->ThrowError("%s: In point %d of list %d of '%s': Invalid point. Expected an array of two integers", Name(), p, l, argName);
+            int x = point[0].AsInt();
+            int y = point[1].AsInt();
+            if (x < 0 || 255 < x || y < 0 || 255 < y)
+                env->ThrowError("%s: In list %d of '%s': Out-of-range point (%d, %d)", Name(), l, argName, x, y);
+            if (pts[x])
+                env->ThrowError("%s: In list %d of '%s': Points (%d, %d) and (%d, %d) overlap", Name(), l, argName, x, pts[x] - 1, x, y);
+            pts[x] = y + 1;
+            grd.drwpoint[ch][count][0] = (uint8_t) x;
+            grd.drwpoint[ch][count][1] = (uint8_t) y;
+        }
+        if (count != 0)
+        {
+            grd.drwmode[ch] = drawMode;
+            grd.poic[ch] = count;
+            grd.channel_mode = ch;
+            CalcCurve(grd);
+        }
+    }
+}
+
 AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironment *env)
 {
     auto &&grd = std::make_unique<Gradation>();
@@ -157,8 +200,12 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
     if (!args[iPmode].IsString())
         env->ThrowError("%s: Missing parameter 'pmode'", Name());
-    if (!args[iFile].IsString())
-        env->ThrowError("%s: Missing parameter 'file'", Name());
+    if (args[iPoints].Defined() && !args[iPoints].IsArray())
+        env->ThrowError("%s: 'points' is not an array", Name());
+    if (!args[iPoints].IsArray() && !args[iFile].IsString())
+        env->ThrowError("%s: No 'points' and no 'file' provided", Name());
+    if (args[iPoints].IsArray() && args[iFile].IsString())
+        env->ThrowError("%s: Only one of 'points', 'file' can be provided at a time", Name());
 
     auto &&child = args[iChild].AsClip();
     auto &vi = child->GetVideoInfo();
@@ -167,9 +214,14 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
     grd->process = parseEnum<ProcessingMode>(args[iPmode].AsString(), "pmode", processingModes, env);
     DrawMode drawMode = parseEnum<DrawMode>(args[iDrawmode].AsString("spline"), "drawmode", drawModes, env);
-    CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsString("auto"), "ftype", env);
-    if (!ImportCurve(*grd, args[iFile].AsString(), type, drawMode))
-        env->ThrowError("%s: Cannot open file '%s'", Name(), args[iFile].AsString());
+    if (args[iPoints].IsArray())
+        parsePoints(*grd, drawMode, args[iPoints], "points", env);
+    else
+    {
+        CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsString("auto"), "ftype", env);
+        if (!ImportCurve(*grd, args[iFile].AsString(), type, drawMode))
+            env->ThrowError("%s: Cannot open file '%s'", Name(), args[iFile].AsString());
+    }
 
     PreCalcLut(*grd);
 
