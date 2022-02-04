@@ -101,8 +101,8 @@ int __stdcall GradationFilter::SetCacheHints(int cachehints, int)
 PVideoFrame __stdcall GradationFilter::GetFrame(int n, IScriptEnvironment* env)
 {
     auto &&src = child->GetFrame(n, env);
-    auto &&dst = src->IsWritable() ? (PVideoFrame &&) src
-                                   : (PVideoFrame &&) env->NewVideoFrameP(vi, &src);
+    auto &&dst = src->IsWritable() ? (const PVideoFrame &) src
+                                   : (const PVideoFrame &) env->NewVideoFrameP(vi, &src);
     Run( *grd, vi.width, vi.height,
          (uint32_t *) src->GetReadPtr(), (uint32_t *) dst->GetWritePtr(),
          src->GetPitch(), dst->GetPitch() );
