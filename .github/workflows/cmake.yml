@@ -1,0 +1,96 @@
+name: Build
+
+on: [push, pull_request]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build-linux-gcc:
+    name: Linux (GCC)
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake . -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Build
+      shell: bash
+      run: cmake --build . -j$(nproc)
+
+  build-linux-clang:
+    name: Linux (Clang)
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      shell: bash
+      env:
+        CC: clang
+        CXX: clang++
+      run: cmake . -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Build
+      shell: bash
+      run: cmake --build . -j$(nproc)
+
+  build-windows-msvc32:
+    name: Windows (MSVC) (Win32)
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake . -A Win32
+
+    - name: Build
+      shell: bash
+      run: cmake --build . --config $BUILD_TYPE
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: release-msvc-x86
+        path: |
+          ${{env.BUILD_TYPE}}/gradation.vdf
+          ${{env.BUILD_TYPE}}/gradation-avs.dll
+
+  build-windows-msvc64:
+    name: Windows (MSVC) (x64)
+    runs-on: windows-2019
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake . -A x64
+
+    - name: Build
+      shell: bash
+      run: cmake --build . --config $BUILD_TYPE
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: release-msvc-x64
+        path: |
+          ${{env.BUILD_TYPE}}/gradation.vdf
+          ${{env.BUILD_TYPE}}/gradation-avs.dll
+
+  build-macos-clang:
+    name: MacOS (Clang)
+    runs-on: macos-10.15
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake . -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Build
+      shell: bash
+      run: cmake --build . -j$(sysctl -n hw.logicalcpu)
