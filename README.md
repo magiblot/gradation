@@ -1,6 +1,6 @@
 # Gradation Curves
 
-<div style="text-align: center">
+<div align="center">
 <img src="https://user-images.githubusercontent.com/20713561/152564351-a3e2e9c5-8b24-42b6-9034-e348f62292a2.png"/>
 </div></br>
 
@@ -16,8 +16,7 @@ See the [original Readme](https://neosol.at/vdub/readme.html).
 
 ## AviSynth
 
-<div style="color: purple; font-weight: bold">Gradation(clip <i>clip</i>, string <i>pmode</i>, string <i>drawmode</i> [, array <i>points</i>] [, string <i>file</i>, string <i>ftype</i>])
-</div></br>
+**Gradation(clip *clip*, string *pmode*, string *drawmode* [, array *points*] [, string *file*, string *ftype*])**
 
 * *clip* **clip** = *(required)*
 
