@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.5)
 project(gradation)
 
 function(common_compile_settings t)
+    target_compile_features(${t} PUBLIC cxx_std_14)
+
     if (WIN32)
         target_compile_definitions(${t} PRIVATE
             _CRT_NONSTDC_NO_WARNINGS

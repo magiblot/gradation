@@ -418,7 +418,7 @@ void CalcCurve(Gradation &grd)
                 for (c2=grd.drwpoint[grd.channel_mode][c1][0];c2<(grd.drwpoint[grd.channel_mode][(c1+1)][0]+1);c2++)
                 {grd.ovalue[grd.channel_mode][c2]=int(c2*inc+ofs+0.5);}
             }
-        break;
+            break;
         case DRAWMODE_SPLINE:
             for (i=0;i<maxPoints;i++){ //clear tables
                 for (j=0;j<maxPoints;j++) {x[i][j]=0;}
@@ -464,7 +464,7 @@ void CalcCurve(Gradation &grd)
                     else if (vy<0) {grd.ovalue[grd.channel_mode][c2]=0;}
                     else {grd.ovalue[grd.channel_mode][c2]=vy;}}
             }
-        break;
+            break;
         case DRAWMODE_GAMMA:
             dx=grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][0][0];
             dy=grd.drwpoint[grd.channel_mode][2][1]-grd.drwpoint[grd.channel_mode][0][1];
@@ -475,26 +475,33 @@ void CalcCurve(Gradation &grd)
             for (c1=0; c1<dx+1; c1++){
                 grd.ovalue[grd.channel_mode][c1+grd.drwpoint[grd.channel_mode][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[grd.channel_mode][0][1];
             }
-        break;
+            break;
         default:
-        break;
+            break;
     }
-    if (grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0]<255) {for (c2=grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0];c2<256;c2++){grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][(grd.poic[grd.channel_mode]-1)][1];}}
+    if (grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0] < 255) {
+        for (c2 = grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0]; c2 < 256; c2++) {
+            grd.ovalue[grd.channel_mode][c2] = grd.drwpoint[grd.channel_mode][(grd.poic[grd.channel_mode]-1)][1];
+        }
+    }
     switch (grd.channel_mode) { //for faster RGB modes
-        case 0:
+        case CHANNEL_RGB:
             for (i=0;i<256;i++) {
-                grd.rvalue[0][i]=(grd.ovalue[0][i]<<16);
-                grd.rvalue[2][i]=(grd.ovalue[0][i]-i)<<16;
-                grd.gvalue[0][i]=(grd.ovalue[0][i]<<8);
-                grd.gvalue[2][i]=(grd.ovalue[0][i]-i)<<8;
-                grd.bvalue[i]=grd.ovalue[0][i]-i;}
-        break;
-        case 1:
-            for (i=0;i<256;i++) {grd.rvalue[1][i]=(grd.ovalue[1][i]<<16);}
-        break;
-        case 2:
-            for (i=0;i<256;i++) {grd.gvalue[1][i]=(grd.ovalue[2][i]<<8);}
-        break;
+                grd.rvalue[0][i] = (grd.ovalue[0][i] << 16);
+                grd.rvalue[2][i] = (grd.ovalue[0][i]-i) <<16;
+                grd.gvalue[0][i] = (grd.ovalue[0][i] << 8);
+                grd.gvalue[2][i] = (grd.ovalue[0][i]-i) << 8;
+                grd.bvalue[i] = grd.ovalue[0][i]-i;
+            }
+            break;
+        case CHANNEL_RED:
+            for (i=0;i<256;i++) {grd.rvalue[1][i] = (grd.ovalue[1][i] << 16);}
+            break;
+        case CHANNEL_GREEN:
+            for (i=0;i<256;i++) {grd.gvalue[1][i] = (grd.ovalue[2][i] << 8);}
+            break;
+        default:
+            break;
     }
 }
 
@@ -639,7 +646,9 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
             rewind (pFile);
             for(i=0; (i < 1280) && ( feof(pFile) == 0 ); i++ )
             {
-                fscanf (pFile, "%d", &stor[i]);
+                if (fscanf(pFile, "%d", &stor[i]) != 1) {
+                    stor[i] = '\0';
+                }
             }
             fclose (pFile);
             lSize = lSize/4;
