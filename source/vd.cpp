@@ -151,7 +151,7 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg);
 static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode);
-static void GrdDrawGradTable(HWND hWnd, int table[], int laboff, DrawMode dmode, int dp[16][2], int pc, int ap);
+static void GrdDrawGradTable(HWND hWnd, uint8_t table[256], int laboff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap);
 static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -164,9 +164,11 @@ static int StartProc(FilterActivation *fa, const FilterFunctions *) {
 
 static int RunProc(const FilterActivation *fa, const FilterFunctions *) {
     MyFilterData *mfd = (MyFilterData *)fa->filter_data;
-    uint32_t *src = (uint32_t *)fa->src.data;
-    uint32_t *dst = (uint32_t *)fa->dst.data;
-    Run(*mfd, fa->src.w, fa->src.h, src, dst, fa->src.pitch, fa->dst.pitch);
+    uint32_t *src = (uint32_t *) fa->src.data;
+    uint32_t *dst = (uint32_t *) fa->dst.data;
+    int32_t src_pitch = (int32_t) fa->src.pitch;
+    int32_t dst_pitch = (int32_t) fa->dst.pitch;
+    Run(*mfd, fa->src.w, fa->src.h, src, dst, src_pitch, dst_pitch);
     return 0;
 }
 
@@ -204,11 +206,11 @@ typedef BOOL DLGPROC_RET;
 static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam) {
     MyFilterData *mfd = (MyFilterData *)GetWindowUserData(hdlg);
     int inv[256];
-    int invp[16][2];
+    uint8_t invp[maxPoints][2];
     int cx;
     int cy;
-    int ax;
-    int ay;
+    uint8_t ax;
+    uint8_t ay;
     int delta[256];
     int a;
     int i;
@@ -220,8 +222,6 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
     int b;
     int max;
     int min;
-    int mode;
-    int spacemode;
     HWND hWnd;
     HCURSOR hCursor;
     HWND hWndBtn1 = NULL;
@@ -402,11 +402,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 
         case WM_USER + 100:
             if (wParam > 32768) {ax = 0;}
-            else if (wParam > 255) {ax = 255;}
-            else {ax = wParam;}
-            if (lParam > 32768) {ay=255;}
-            else if (lParam > 255) {ay = 0;}
-            else {ay = 255-lParam;}
+            else {ax = (uint8_t) min(max(wParam, 0), 255);}
+            if (lParam > 32768) {ay = 255;}
+            else {ay = (uint8_t) min(max(255-lParam, 0), 255);}
             if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 mfd->ovalue[mfd->channel_mode][ax]=(ay);
                 switch (mfd->channel_mode) { //for faster RGB modes
@@ -585,10 +583,8 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             break;
 
         case WM_USER + 101: //left mouse button pressed
-            if (wParam > 255) {ax = 255;}
-            else if (wParam <= 255) {ax = wParam;}
-            if (lParam > 255) {ay = 0;}
-            else if (lParam <= 255) {ay = 255-lParam;}
+            ax = (uint8_t) min(max(wParam, 0), 255);
+            ay = (uint8_t) min(max(255-lParam, 0), 255);
             if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 mfd->xl = 300;
                 mfd->yl = 300;
@@ -619,7 +615,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){ // add point
                     stp=false;
                     ptp=false;
-                    if (mfd->psel==false && mfd->poic[mfd->channel_mode]<16)
+                    if (mfd->psel==false && mfd->poic[mfd->channel_mode]<maxPoints)
                         for (i=1; i<(mfd->poic[mfd->channel_mode]);i++){
                             if (mfd->drwpoint[mfd->channel_mode][i][0]>ax && ptp==false && mfd->drwpoint[mfd->channel_mode][0][0]<ax){
                                 ptp=true;
@@ -652,18 +648,15 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 
         case WM_USER + 103: //right mouse button pressed
             if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
-                if (wParam > 255) {ax = 255;}
-                else if (wParam <= 255) {ax = wParam;}
+                ax = (uint8_t) min(max(wParam, 0), 255);
                 mfd->value=ax;
                 SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
                 SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
             else if ((mfd->drwmode[mfd->channel_mode]==DRAWMODE_LINEAR || mfd->drwmode[mfd->channel_mode]==DRAWMODE_SPLINE) && mfd->poic[mfd->channel_mode]>2){ // delete point
                 stp=false;
                 ptp=false;
-                if (wParam > 255) {ax = 255;}
-                else if (wParam <= 255) {ax = wParam;}
-                if (lParam > 255) {ay = 0;}
-                else if (lParam <= 255) {ay = 255-lParam;}
+                ax = (uint8_t) min(max(wParam, 0), 255);
+                ay = (uint8_t) min(max(255-lParam, 0), 255);
                 for (i=1; i<(mfd->poic[mfd->channel_mode])-1;i++){
                     if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11 && stp==false){
                         if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
@@ -1191,9 +1184,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 break;
             case IDC_SPACE:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
-                    spacemode = SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0);
+                    Space spacemode = Space(SendDlgItemMessage(hdlg, IDC_SPACE, CB_GETCURSEL, 0, 0));
                     if (mfd->space_mode != spacemode) {
-                        mfd->space_mode = Space(spacemode);
+                        mfd->space_mode = spacemode;
                         hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
                         SendMessage(hWnd, CB_RESETCONTENT, 0, 0);
                         mfd->laboff = 0;
@@ -1309,9 +1302,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 return TRUE;
             case IDC_CHANNEL:
                 if (HIWORD(wParam) == CBN_SELCHANGE) {
-                    mode=SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset;
+                    Channel mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
                     if (mode != mfd->channel_mode) {
-                        mfd->channel_mode = Channel(mode);
+                        mfd->channel_mode = mode;
                         if (mfd->space_mode == SPACE_LAB) {
                             if (mfd->channel_mode == 2) {mfd->laboff = -9;}
                             else if (mfd->channel_mode == 3) {mfd->laboff = 8;}
@@ -1415,9 +1408,11 @@ static void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *ar
             cnt=cnt+2;}
         for (j=0;j<cc;j++) {
             for (i=0; i<mfd->poic[j];i++){
-                sscanf(tmp + cnt,"%02x", &mfd->drwpoint[j][i][0]);
+                sscanf(tmp + cnt,"%02x", &t);
+                mfd->drwpoint[j][i][0] = (uint8_t) t;
                 cnt=cnt+2;
-                sscanf(tmp + cnt,"%02x", &mfd->drwpoint[j][i][1]);
+                sscanf(tmp + cnt,"%02x", &t);
+                mfd->drwpoint[j][i][1] = (uint8_t) t;
                 cnt=cnt+2;}
         }
     }
@@ -1533,7 +1528,7 @@ static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode)
     }
 }
 
-static void GrdDrawGradTable(HWND hWnd, int table[], int loff, DrawMode dmode, int dp[16][2], int pc, int ap)  // draw the curve
+static void GrdDrawGradTable(HWND hWnd, uint8_t table[256], int loff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap)  // draw the curve
 {
     RECT rect;
 

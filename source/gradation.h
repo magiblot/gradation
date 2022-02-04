@@ -4,6 +4,7 @@
 #if __cplusplus >= 201103L
 #include <stdint.h>
 #else
+typedef unsigned char uint8_t;
 typedef long int32_t;
 typedef unsigned long uint32_t;
 #endif
@@ -123,17 +124,19 @@ enum CurveFileType {
     FILETYPE_SMARTCURVE_HSV = 6,
 };
 
+enum { maxPoints = 32 };
+
 struct Gradation {
     int rvalue[3][256];
     int gvalue[3][256];
     int bvalue[256];
-    int ovalue[5][256];
+    uint8_t ovalue[5][256];
     Space space_mode;
     Channel channel_mode;
     ProcessingMode process;
     bool Labprecalc;
     DrawMode drwmode[5];
-    int drwpoint[5][16][2];
+    uint8_t drwpoint[5][maxPoints][2];
     int poic[5];
     char gamma[10];
 };

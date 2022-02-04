@@ -398,11 +398,11 @@ void CalcCurve(Gradation &grd)
     double inc;
     double ofs;
     double ga;
-    double x[16][16];
-    double y[16];
-    double a[16];
-    double b[16];
-    double c[16];
+    double x[maxPoints][maxPoints];
+    double y[maxPoints];
+    double a[maxPoints];
+    double b[maxPoints];
+    double c[maxPoints];
 
     if (grd.drwpoint[grd.channel_mode][0][0]>0) {
         for (c2=0;c2<grd.drwpoint[grd.channel_mode][0][0];c2++) {
@@ -420,8 +420,8 @@ void CalcCurve(Gradation &grd)
             }
         break;
         case DRAWMODE_SPLINE:
-            for (i=0;i<16;i++){ //clear tables
-                for (j=0;j<16;j++) {x[i][j]=0;}
+            for (i=0;i<maxPoints;i++){ //clear tables
+                for (j=0;j<maxPoints;j++) {x[i][j]=0;}
                 y[i]=0;
                 a[i]=0;
                 b[i]=0;
@@ -599,7 +599,7 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     grd.poic[curpos] = cv;
                     if (noocur >= (curpos+1))
                     {curposnext = i+grd.poic[curpos]*4+2;
-                    if (grd.poic[curpos-1]>16) {grd.poic[curpos-1]=16;}
+                    if (grd.poic[curpos-1]>maxPoints) {grd.poic[curpos-1]=maxPoints;}
                     curpos++;
                     cordcount=0;
                     cordpos=i+2;}}
@@ -680,7 +680,7 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     if (curpos<4) {beg=i+grd.poic[curpos]*2+257;}
                     cordcount=0;
                     count=0;
-                    if (grd.poic[curpos]>16) {grd.poic[curpos]=16;} // limit to 16 points
+                    if (grd.poic[curpos]>maxPoints) {grd.poic[curpos]=maxPoints;}
                 }
                 if (i>=curposnext) { // read raw curve data
                     cordpos=0;
@@ -697,14 +697,14 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     grd.drwpoint[curpos][cordcount][0]=cv;}
                 if (i == cordpos+1) {
                     grd.drwpoint[curpos][cordcount][1]=cv;
-                    if (cordcount<grd.poic[curpos]-1 && cordcount<15) {cordcount++;} // limit to 16 points
+                    if (cordcount<grd.poic[curpos]-1 && cordcount<maxPoints-1) {cordcount++;}
                     cordpos=cordpos+2;}
             }
             fclose (pFile);
         }
         if (type == FILETYPE_MAP) { //*.map exchange 4<->0
             int temp[1280];
-            int drwtmp[16][2];
+            int drwtmp[maxPoints][2];
             DrawMode drwmodtmp=grd.drwmode[4];
             int pictmp=grd.poic[4];
             for (i=0;i<pictmp;i++){
