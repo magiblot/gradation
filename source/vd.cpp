@@ -102,6 +102,7 @@ static LRESULT CALLBACK FiWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARA
 struct MyFilterData : Gradation {
     IFilterPreview *ifp;
     int value;
+    Space space_mode;
     int xl;
     int yl;
     int offset;
