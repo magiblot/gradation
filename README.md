@@ -101,7 +101,3 @@ cmake --build ./build --config Release
 # ./build/Release/gradation-avs.dll
 # ./build/Release/gradation.vdf
 ```
-
-## Visual C++ 6.0
-
-The VirtualDub filter can still be built with ancient versions of Visual Studio by loading the `gradation.dsp` file into the IDE.

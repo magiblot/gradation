@@ -1,13 +1,7 @@
 #ifndef GRADATION_H
 #define GRADATION_H
 
-#if __cplusplus >= 201103L
 #include <stdint.h>
-#else
-typedef unsigned char uint8_t;
-typedef long int32_t;
-typedef unsigned long uint32_t;
-#endif
 
 extern int rgblab[]; //LUT Lab
 extern int labrgb[]; //LUT Lab
