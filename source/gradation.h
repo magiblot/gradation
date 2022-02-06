@@ -14,7 +14,7 @@ enum Space {
     SPACE_LAB               = 4,
 };
 
-static const char *space_names[] = {
+static const char * const space_names[] = {
     "RGB",
     "YUV",
     "CMYK",
@@ -46,33 +46,33 @@ enum Channel {
     CHANNEL_B               = 3,
 };
 
-static const char *RGBchannel_names[] = {
+static const char * const RGBchannel_names[] = {
     "RGB",
     "Red",
     "Green",
     "Blue",
 };
 
-static const char *YUVchannel_names[] = {
+static const char * const YUVchannel_names[] = {
     "Luminance",
     "ChromaB",
     "ChromaR",
 };
 
-static const char *CMYKchannel_names[] = {
+static const char * const CMYKchannel_names[] = {
     "Cyan",
     "Magenta",
     "Yellow",
     "Black",
 };
 
-static const char *HSVchannel_names[] = {
+static const char * const HSVchannel_names[] = {
     "Hue",
     "Saturation",
     "Value",
 };
 
-static const char *LABchannel_names[] = {
+static const char * const LABchannel_names[] = {
     "Luminance",
     "a Red-Green",
     "b Yellow-Blue",
@@ -90,7 +90,7 @@ enum ProcessingMode {
     PROCMODE_LAB    = 8,
 };
 
-static const char *process_names[] = {
+static const char * const process_names[] = {
     "RGB only",
     "RGB + R/G/B",
     "RGB weighted",
