@@ -71,12 +71,12 @@ class GradationFilter : public GenericVideoFilter
     static CurveFileType parseCurveFileType(const char *, const char *, const char *, IScriptEnvironment *);
     static void parsePoints(Gradation &, DrawMode, const AVSValue &, const char *Name, IScriptEnvironment *);
 
-    enum { iChild, iPmode, iDrawmode, iPoints, iFile, iFtype };
+    enum { iChild, iPmode, iDrawmode, iPoints, iFile, iFtype, iPrecise };
 
     static const char *Name()
         { return "Gradation"; }
     static const char *Signature()
-        { return "c[pmode]s[drawmode]s[points].[file]s[ftype]s"; }
+        { return "c[pmode]s[drawmode]s[points].[file]s[ftype]s[precise]b"; }
     static AVSValue __cdecl Create(AVSValue args, void *, IScriptEnvironment *env);
 
 public:
@@ -193,8 +193,9 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
 
 AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironment *env)
 {
+    bool precise = args[iPrecise].AsBool(false);
     auto &&grd = std::make_unique<Gradation>();
-    Init(*grd);
+    Init(*grd, precise);
 
     if (!args[iPmode].IsString())
         env->ThrowError("%s: Missing parameter 'pmode'", Name());

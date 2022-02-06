@@ -24,13 +24,28 @@
 #include <stdio.h>
 #include <math.h>
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 ///////////////////////////////////////////////////////////////////////////
 
 static void PreCalcRgb2Lab(int *);
 static void PreCalcLab2Rgb(int *);
+
+template <class T>
+struct RGB { T r, g, b; };
+template <class T>
+struct HSV { T h, s, v; };
+
+static inline RGB<uint8_t> unpackRGB(uint32_t p);
+static inline uint32_t packRGB(RGB<uint8_t> p);
+static inline double applyCurve(const uint8_t y[256], double x);
+
+static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in);
+static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in);
+
+static HSV<double> rgb2hsv(RGB<double> in);
+static RGB<double> hsv2rgb(HSV<double> in);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -56,11 +71,6 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
     int g;
     int b;
     int bw;
-    int cmin;
-    int cdelta;
-    int cdeltah;
-    int ch;
-    int chi;
     int div;
     int divh;
     int v;
@@ -251,79 +261,11 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                r = ((old_pixel & 0xFF0000)>>16);
-                g = ((old_pixel & 0x00FF00)>>8);
-                b = (old_pixel & 0x0000FF);
-                //RGB to HSV (x=H y=S z=V)
-                cmin = min(r,g);
-                cmin = min(b,cmin);
-                z = max(r,g);
-                z = max(b,z);
-                cdelta = z - cmin;
-                if( cdelta != 0 )
-                {   y = (cdelta*255)/z;
-                    cdelta = (cdelta*6);
-                    cdeltah = cdelta>>1;
-                    if(r==z) {x = (((g-b)<<16)+cdeltah)/cdelta;}
-                    else if(g==z) {x = 21845+((((b-r)<<16)+cdeltah)/cdelta);}
-                    else {x = 43689+((((r-g)<<16)+cdeltah)/cdelta);}
-                    if(x<0) {x=(x+65577)>>8;}
-                    else {x=(x+128)>>8;}
-                }
-                else
-                {   y = 0;
-                    x = 0;
-                }
-                // Applying the curves
-                x = grd.ovalue[1][x];
-                y = grd.ovalue[2][y];
-                z = grd.ovalue[3][z];
-                // HSV to RGB
-                if (y==0)
-                {
-                    r = z;
-                    g = z;
-                    b = z;
-                }
-                else
-                {   chi = ((x*6)&0xFF00);
-                    ch  = (x*6-chi);;
-                    switch(chi)
-                    {
-                    case 0:
-                        r = z;
-                        g = (z*(65263-(y*(256-ch)))+65531)>>16;
-                        b = (z*(255-y)+94)>>8;
-                        break;
-                    case 256:
-                        r = (z*(65263-y*ch)+65528)>>16;
-                        g = z;
-                        b = (z*(255-y)+89)>>8;
-                        break;
-                    case 512:
-                        r = (z*(255-y)+89)>>8;
-                        g = z;
-                        b = (z*(65267-(y*(256-ch)))+65529)>>16;
-                        break;
-                    case 768:
-                        r = (z*(255-y)+89)>>8;
-                        g = (z*(65267-y*ch)+65529)>>16;
-                        b = z;
-                        break;
-                    case 1024:
-                        r = (z*(65263-(y*(256-ch)))+65528)>>16;
-                        g = (z*(255-y)+89)>>8;
-                        b = z;
-                        break;
-                    default:
-                        r = z;
-                        g = (z*(255-y)+89)>>8;
-                        b = (z*(65309-y*(ch+1))+27)>>16;
-                        break;
-                    }
-                }
-                new_pixel = ((r<<16)+(g<<8)+b);
-                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
+                auto result =
+                    grd.precise ? processHSVDouble(grd, unpackRGB(old_pixel))
+                                : processHSVInt(grd, unpackRGB(old_pixel));
+                new_pixel = packRGB(result) | (old_pixel & 0xFF000000U);
+                *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -354,9 +296,10 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
     }
 }
 
-void Init(Gradation &grd) {
+void Init(Gradation &grd, bool precise) {
     int i;
 
+    grd.precise = precise;
     grd.Labprecalc = 0;
     for (i=0; i<5; i++){
         grd.drwmode[i]=DRAWMODE_SPLINE;
@@ -872,4 +815,178 @@ void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
         }
     }
     fclose(pFile);
+}
+
+static inline RGB<uint8_t> unpackRGB(uint32_t p)
+{
+    return {
+        uint8_t((p & 0xFF0000) >> 16),
+        uint8_t((p & 0x00FF00) >> 8),
+        uint8_t(p & 0x0000FF),
+    };
+}
+
+static inline uint32_t packRGB(RGB<uint8_t> p)
+{
+    return ((p.r << 16) + (p.g << 8) + p.b);
+}
+
+static inline double applyCurve(const uint8_t y[256], double x)
+{
+    // Interpolate from two points.
+    uint8_t x1 = uint8_t(x);
+    uint8_t x2 = x1 + 1; // Native wrapping: 255 + 1 -> 0.
+    uint8_t cx1 = y[x1];
+    uint8_t cx2 = y[x2];
+    double ff = x - x1;
+    return (1.0 - ff)*cx1 + ff*cx2;
+}
+
+static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
+{
+    uint8_t r = in.r,
+            g = in.g,
+            b = in.b;
+    // RGB to HSV
+    uint8_t h, s, v;
+    uint8_t cmin = MIN(MIN(r, g), b);
+    v = MAX(MAX(r, g), b);
+    int32_t cdelta = v - cmin;
+    if (cdelta != 0)
+    {
+        s = uint8_t((cdelta*255)/v);
+        cdelta = (cdelta*6);
+        int32_t cdeltah = cdelta >> 1;
+        int32_t x;
+        if (r == v)
+            x = ((int32_t(g - b) << 16) + cdeltah)/cdelta;
+        else if (g == v)
+            x = 21845 + ((int32_t(b - r) << 16) + cdeltah)/cdelta;
+        else
+            x = 43689 + ((int32_t(r - g) << 16) + cdeltah)/cdelta;
+        if (x < 0)
+            h = uint8_t((x + 65577) >> 8);
+        else
+            h = uint8_t((x + 128) >> 8);
+    }
+    else
+        h = s = 0;
+    // Apply the curves
+    h = grd.ovalue[1][h];
+    s = grd.ovalue[2][s];
+    v = grd.ovalue[3][v];
+    // HSV to RGB
+    if (s == 0)
+        return {v, v, v};
+    int32_t chi = ((h*6) & 0xFF00);
+    int32_t ch = (h*6 - chi);
+    switch (chi)
+    {
+        case 0:
+            r = v;
+            g = uint8_t((v*(65263 - (s*(256 - ch))) + 65531) >> 16);
+            b = uint8_t((v*(255 - s) + 94) >> 8);
+            break;
+        case 256:
+            r = uint8_t((v*(65263 - s*ch) + 65528) >> 16);
+            g = v;
+            b = uint8_t((v*(255 - s) + 89) >> 8);
+            break;
+        case 512:
+            r = uint8_t((v*(255 - s) + 89) >> 8);
+            g = v;
+            b = uint8_t((v*(65267 - (s*(256 - ch))) + 65529) >> 16);
+            break;
+        case 768:
+            r = uint8_t((v*(255 - s) + 89) >> 8);
+            g = uint8_t((v*(65267 - s*ch) + 65529) >> 16);
+            b = v;
+            break;
+        case 1024:
+            r = uint8_t((v*(65263 - (s*(256 - ch))) + 65528) >> 16);
+            g = uint8_t((v*(255 - s) + 89) >> 8);
+            b = v;
+            break;
+        default:
+            r = v;
+            g = uint8_t((v*(255 - s) + 89) >> 8);
+            b = uint8_t((v*(65309 - s*(ch + 1)) + 27) >> 16);
+            break;
+    }
+    return {r, g, b};
+}
+
+static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
+{
+    auto hsv = rgb2hsv({
+        double(in.r),
+        double(in.g),
+        double(in.b),
+    });
+    auto rgb = hsv2rgb({
+        applyCurve(grd.ovalue[1], hsv.h),
+        applyCurve(grd.ovalue[2], hsv.s),
+        applyCurve(grd.ovalue[3], hsv.v),
+    });
+    return {
+        uint8_t(rgb.r + 0.5),
+        uint8_t(rgb.g + 0.5),
+        uint8_t(rgb.b + 0.5),
+    };
+}
+
+// https://stackoverflow.com/a/6930407
+static HSV<double> rgb2hsv(RGB<double> in)
+{
+    double min = MIN(MIN(in.r, in.g), in.b);
+    double max = MAX(MAX(in.r, in.g), in.b);
+    double delta = max - min;
+
+    HSV<double> out;
+    out.v = max;
+
+    if (max == 0.0)
+        out.s = 0;
+    else
+        out.s = delta*255.0/max;
+
+    if (delta == 0.0)
+        out.h = 0;
+    else if (in.r == max)
+        out.h = (in.g - in.b)/delta;
+    else if (in.g == max)
+        out.h = 2.0 + (in.b - in.r)/delta;
+    else
+        out.h = 4.0 + (in.r - in.g)/delta;
+
+    out.h *= 42.5;
+
+    if (out.h < 0.0)
+        out.h += 255.0;
+
+    return out;
+}
+
+static RGB<double> hsv2rgb(HSV<double> in)
+{
+    if (in.s == 0.0)
+        return {in.v, in.v, in.v};
+
+    double hh = in.h < 255.0 ? in.h/42.5 : 0.0;
+    int i = (int) hh;
+    double ff = hh - i;
+    double s = in.s/255.0;
+    double p = in.v * (1.0 - s);
+    double q = in.v * (1.0 - (s * ff));
+    double t = in.v * (1.0 - (s * (1.0 - ff)));
+
+    switch (i)
+    {
+        case 0:     return {in.v, t, p};
+        case 1:     return {q, in.v, p};
+        case 2:     return {p, in.v, t};
+        case 3:     return {p, q, in.v};
+        case 4:     return {t, p, in.v};
+        default:    return {in.v, p, q};
+    }
 }
