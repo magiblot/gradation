@@ -126,14 +126,16 @@ struct Gradation {
     int bvalue[256];
     uint8_t ovalue[5][256];
     ProcessingMode process;
-    bool Labprecalc;
+    uint8_t
+        precise         : 1,
+        Labprecalc      : 1;
     DrawMode drwmode[5];
     uint8_t drwpoint[5][maxPoints][2];
     int poic[5];
     char gamma[10];
 };
 
-void Init(Gradation &grd);
+void Init(Gradation &grd, bool precise=false);
 void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
 
 void PreCalcLut(Gradation &grd);
