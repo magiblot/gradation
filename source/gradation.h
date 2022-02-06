@@ -125,7 +125,6 @@ struct Gradation {
     int gvalue[3][256];
     int bvalue[256];
     uint8_t ovalue[5][256];
-    Channel channel_mode;
     ProcessingMode process;
     bool Labprecalc;
     DrawMode drwmode[5];
@@ -138,7 +137,7 @@ void Init(Gradation &grd);
 void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
 
 void PreCalcLut(Gradation &grd);
-void CalcCurve(Gradation &grd);
+void CalcCurve(Gradation &grd, Channel channel);
 bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode=DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
 

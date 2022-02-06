@@ -383,7 +383,7 @@ void Init(Gradation &grd) {
     }
 }
 
-void CalcCurve(Gradation &grd)
+void CalcCurve(Gradation &grd, Channel channel)
 {
     int c1;
     int c2;
@@ -404,19 +404,19 @@ void CalcCurve(Gradation &grd)
     double b[maxPoints];
     double c[maxPoints];
 
-    if (grd.drwpoint[grd.channel_mode][0][0]>0) {
-        for (c2=0;c2<grd.drwpoint[grd.channel_mode][0][0];c2++) {
-            grd.ovalue[grd.channel_mode][c2]=grd.drwpoint[grd.channel_mode][0][1];
+    if (grd.drwpoint[channel][0][0]>0) {
+        for (c2=0;c2<grd.drwpoint[channel][0][0];c2++) {
+            grd.ovalue[channel][c2]=grd.drwpoint[channel][0][1];
         }
     }
-    switch (grd.drwmode[grd.channel_mode]){
+    switch (grd.drwmode[channel]){
         case DRAWMODE_LINEAR:
-            for (c1=0; c1<(grd.poic[grd.channel_mode]-1); c1++){
-                div=(grd.drwpoint[grd.channel_mode][(c1+1)][0]-grd.drwpoint[grd.channel_mode][c1][0]);
-                inc=(grd.drwpoint[grd.channel_mode][(c1+1)][1]-grd.drwpoint[grd.channel_mode][c1][1])/div;
-                ofs=grd.drwpoint[grd.channel_mode][c1][1]-inc*grd.drwpoint[grd.channel_mode][c1][0];
-                for (c2=grd.drwpoint[grd.channel_mode][c1][0];c2<(grd.drwpoint[grd.channel_mode][(c1+1)][0]+1);c2++)
-                {grd.ovalue[grd.channel_mode][c2]=int(c2*inc+ofs+0.5);}
+            for (c1=0; c1<(grd.poic[channel]-1); c1++){
+                div=(grd.drwpoint[channel][(c1+1)][0]-grd.drwpoint[channel][c1][0]);
+                inc=(grd.drwpoint[channel][(c1+1)][1]-grd.drwpoint[channel][c1][1])/div;
+                ofs=grd.drwpoint[channel][c1][1]-inc*grd.drwpoint[channel][c1][0];
+                for (c2=grd.drwpoint[channel][c1][0];c2<(grd.drwpoint[channel][(c1+1)][0]+1);c2++)
+                {grd.ovalue[channel][c2]=int(c2*inc+ofs+0.5);}
             }
             break;
         case DRAWMODE_SPLINE:
@@ -427,64 +427,64 @@ void CalcCurve(Gradation &grd)
                 b[i]=0;
                 c[i]=0;}
 
-            if (grd.poic[grd.channel_mode]>3) { //curve has more than 3 coordinates
-                j=grd.poic[grd.channel_mode]-3; //fill the matrix needed to calculate the b coefficients of the cubic functions an*x^3+bn*x^2+cn*x+dn
-                x[0][0]=double(2*(grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][0][0]));
-                x[0][1]=double((grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][1][0]));
-                y[0]=3*(double(grd.drwpoint[grd.channel_mode][2][1]-grd.drwpoint[grd.channel_mode][1][1])/double(grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][1][0])-double(grd.drwpoint[grd.channel_mode][1][1]-grd.drwpoint[grd.channel_mode][0][1])/double(grd.drwpoint[grd.channel_mode][1][0]-grd.drwpoint[grd.channel_mode][0][0]));
+            if (grd.poic[channel]>3) { //curve has more than 3 coordinates
+                j=grd.poic[channel]-3; //fill the matrix needed to calculate the b coefficients of the cubic functions an*x^3+bn*x^2+cn*x+dn
+                x[0][0]=double(2*(grd.drwpoint[channel][2][0]-grd.drwpoint[channel][0][0]));
+                x[0][1]=double((grd.drwpoint[channel][2][0]-grd.drwpoint[channel][1][0]));
+                y[0]=3*(double(grd.drwpoint[channel][2][1]-grd.drwpoint[channel][1][1])/double(grd.drwpoint[channel][2][0]-grd.drwpoint[channel][1][0])-double(grd.drwpoint[channel][1][1]-grd.drwpoint[channel][0][1])/double(grd.drwpoint[channel][1][0]-grd.drwpoint[channel][0][0]));
                 for (i=1;i<j;i++){
-                    x[i][i-1]=double((grd.drwpoint[grd.channel_mode][i+1][0]-grd.drwpoint[grd.channel_mode][i][0]));
-                    x[i][i]=double(2*(grd.drwpoint[grd.channel_mode][i+2][0]-grd.drwpoint[grd.channel_mode][i][0]));
-                    x[i][i+1]=double((grd.drwpoint[grd.channel_mode][i+2][0]-grd.drwpoint[grd.channel_mode][i+1][0]));
-                    y[i]=3*(double(grd.drwpoint[grd.channel_mode][i+2][1]-grd.drwpoint[grd.channel_mode][i+1][1])/double(grd.drwpoint[grd.channel_mode][i+2][0]-grd.drwpoint[grd.channel_mode][i+1][0])-double(grd.drwpoint[grd.channel_mode][i+1][1]-grd.drwpoint[grd.channel_mode][i][1])/double(grd.drwpoint[grd.channel_mode][i+1][0]-grd.drwpoint[grd.channel_mode][i][0]));
+                    x[i][i-1]=double((grd.drwpoint[channel][i+1][0]-grd.drwpoint[channel][i][0]));
+                    x[i][i]=double(2*(grd.drwpoint[channel][i+2][0]-grd.drwpoint[channel][i][0]));
+                    x[i][i+1]=double((grd.drwpoint[channel][i+2][0]-grd.drwpoint[channel][i+1][0]));
+                    y[i]=3*(double(grd.drwpoint[channel][i+2][1]-grd.drwpoint[channel][i+1][1])/double(grd.drwpoint[channel][i+2][0]-grd.drwpoint[channel][i+1][0])-double(grd.drwpoint[channel][i+1][1]-grd.drwpoint[channel][i][1])/double(grd.drwpoint[channel][i+1][0]-grd.drwpoint[channel][i][0]));
                 }
-                x[j][j-1]=double(grd.drwpoint[grd.channel_mode][j+1][0]-grd.drwpoint[grd.channel_mode][j][0]);
-                x[j][j]=double(2*(grd.drwpoint[grd.channel_mode][j+2][0]-grd.drwpoint[grd.channel_mode][j][0]));
-                y[j]=3*(double(grd.drwpoint[grd.channel_mode][j+2][1]-grd.drwpoint[grd.channel_mode][j+1][1])/double(grd.drwpoint[grd.channel_mode][j+2][0]-grd.drwpoint[grd.channel_mode][j+1][0])-double(grd.drwpoint[grd.channel_mode][j+1][1]-grd.drwpoint[grd.channel_mode][j][1])/double(grd.drwpoint[grd.channel_mode][j+1][0]-grd.drwpoint[grd.channel_mode][j][0]));
+                x[j][j-1]=double(grd.drwpoint[channel][j+1][0]-grd.drwpoint[channel][j][0]);
+                x[j][j]=double(2*(grd.drwpoint[channel][j+2][0]-grd.drwpoint[channel][j][0]));
+                y[j]=3*(double(grd.drwpoint[channel][j+2][1]-grd.drwpoint[channel][j+1][1])/double(grd.drwpoint[channel][j+2][0]-grd.drwpoint[channel][j+1][0])-double(grd.drwpoint[channel][j+1][1]-grd.drwpoint[channel][j][1])/double(grd.drwpoint[channel][j+1][0]-grd.drwpoint[channel][j][0]));
 
-                for (i=0;i<grd.poic[grd.channel_mode]-3;i++) { //resolve the matrix to get the b coefficients
+                for (i=0;i<grd.poic[channel]-3;i++) { //resolve the matrix to get the b coefficients
                     div=x[i+1][i]/x[i][i];
                     x[i+1][i]=x[i+1][i]-x[i][i]*div;
                     x[i+1][i+1]=x[i+1][i+1]-x[i][i+1]*div;
                     x[i+1][i+2]=x[i+1][i+2]-x[i][i+2]*div;
                     y[i+1]=y[i+1]-y[i]*div;}
-                b[grd.poic[grd.channel_mode]-2]=y[grd.poic[grd.channel_mode]-3]/x[grd.poic[grd.channel_mode]-3][grd.poic[grd.channel_mode]-3]; //last b coefficient
-                for (i=grd.poic[grd.channel_mode]-3;i>0;i--) {b[i]=(y[i-1]-x[i-1][i]*b[i+1])/x[i-1][i-1];} // backward subsitution to get the rest of the the b coefficients
+                b[grd.poic[channel]-2]=y[grd.poic[channel]-3]/x[grd.poic[channel]-3][grd.poic[channel]-3]; //last b coefficient
+                for (i=grd.poic[channel]-3;i>0;i--) {b[i]=(y[i-1]-x[i-1][i]*b[i+1])/x[i-1][i-1];} // backward subsitution to get the rest of the the b coefficients
             }
-            else if (grd.poic[grd.channel_mode]==3) { //curve has 3 coordinates
-                b[1]=3*(double(grd.drwpoint[grd.channel_mode][2][1]-grd.drwpoint[grd.channel_mode][1][1])/double(grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][1][0])-double(grd.drwpoint[grd.channel_mode][1][1]-grd.drwpoint[grd.channel_mode][0][1])/double(grd.drwpoint[grd.channel_mode][1][0]-grd.drwpoint[grd.channel_mode][0][0]))/double(2*(grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][0][0]));}
+            else if (grd.poic[channel]==3) { //curve has 3 coordinates
+                b[1]=3*(double(grd.drwpoint[channel][2][1]-grd.drwpoint[channel][1][1])/double(grd.drwpoint[channel][2][0]-grd.drwpoint[channel][1][0])-double(grd.drwpoint[channel][1][1]-grd.drwpoint[channel][0][1])/double(grd.drwpoint[channel][1][0]-grd.drwpoint[channel][0][0]))/double(2*(grd.drwpoint[channel][2][0]-grd.drwpoint[channel][0][0]));}
 
-            for (c2=0;c2<(grd.poic[grd.channel_mode]-1);c2++){ //get the a and c coefficients
-                a[c2]=(double(b[c2+1]-b[c2])/double(3*(grd.drwpoint[grd.channel_mode][c2+1][0]-grd.drwpoint[grd.channel_mode][c2][0])));
-                c[c2]=double(grd.drwpoint[grd.channel_mode][c2+1][1]-grd.drwpoint[grd.channel_mode][c2][1])/double(grd.drwpoint[grd.channel_mode][c2+1][0]-grd.drwpoint[grd.channel_mode][c2][0])-double(b[c2+1]-b[c2])*double(grd.drwpoint[grd.channel_mode][c2+1][0]-grd.drwpoint[grd.channel_mode][c2][0])/3-b[c2]*(grd.drwpoint[grd.channel_mode][c2+1][0]-grd.drwpoint[grd.channel_mode][c2][0]);}
-            for (c1=0;c1<(grd.poic[grd.channel_mode]-1);c1++){ //calculate the y values of the spline curve
-                for (c2=grd.drwpoint[grd.channel_mode][(c1)][0];c2<(grd.drwpoint[grd.channel_mode][(c1+1)][0]+1);c2++){
-                    vy=int(0.5+a[c1]*(c2-grd.drwpoint[grd.channel_mode][c1][0])*(c2-grd.drwpoint[grd.channel_mode][c1][0])*(c2-grd.drwpoint[grd.channel_mode][c1][0])+b[c1]*(c2-grd.drwpoint[grd.channel_mode][c1][0])*(c2-grd.drwpoint[grd.channel_mode][c1][0])+c[c1]*(c2-grd.drwpoint[grd.channel_mode][c1][0])+grd.drwpoint[grd.channel_mode][c1][1]);
-                    if (vy>255) {grd.ovalue[grd.channel_mode][c2]=255;}
-                    else if (vy<0) {grd.ovalue[grd.channel_mode][c2]=0;}
-                    else {grd.ovalue[grd.channel_mode][c2]=vy;}}
+            for (c2=0;c2<(grd.poic[channel]-1);c2++){ //get the a and c coefficients
+                a[c2]=(double(b[c2+1]-b[c2])/double(3*(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])));
+                c[c2]=double(grd.drwpoint[channel][c2+1][1]-grd.drwpoint[channel][c2][1])/double(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])-double(b[c2+1]-b[c2])*double(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])/3-b[c2]*(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0]);}
+            for (c1=0;c1<(grd.poic[channel]-1);c1++){ //calculate the y values of the spline curve
+                for (c2=grd.drwpoint[channel][(c1)][0];c2<(grd.drwpoint[channel][(c1+1)][0]+1);c2++){
+                    vy=int(0.5+a[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+b[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+c[c1]*(c2-grd.drwpoint[channel][c1][0])+grd.drwpoint[channel][c1][1]);
+                    if (vy>255) {grd.ovalue[channel][c2]=255;}
+                    else if (vy<0) {grd.ovalue[channel][c2]=0;}
+                    else {grd.ovalue[channel][c2]=vy;}}
             }
             break;
         case DRAWMODE_GAMMA:
-            dx=grd.drwpoint[grd.channel_mode][2][0]-grd.drwpoint[grd.channel_mode][0][0];
-            dy=grd.drwpoint[grd.channel_mode][2][1]-grd.drwpoint[grd.channel_mode][0][1];
-            dxg=grd.drwpoint[grd.channel_mode][1][0]-grd.drwpoint[grd.channel_mode][0][0];
-            dyg=grd.drwpoint[grd.channel_mode][1][1]-grd.drwpoint[grd.channel_mode][0][1];
+            dx=grd.drwpoint[channel][2][0]-grd.drwpoint[channel][0][0];
+            dy=grd.drwpoint[channel][2][1]-grd.drwpoint[channel][0][1];
+            dxg=grd.drwpoint[channel][1][0]-grd.drwpoint[channel][0][0];
+            dyg=grd.drwpoint[channel][1][1]-grd.drwpoint[channel][0][1];
             ga=log(double(dyg)/double(dy))/log(double(dxg)/double(dx));
             sprintf(grd.gamma, "%.3lf", 1/ga);
             for (c1=0; c1<dx+1; c1++){
-                grd.ovalue[grd.channel_mode][c1+grd.drwpoint[grd.channel_mode][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[grd.channel_mode][0][1];
+                grd.ovalue[channel][c1+grd.drwpoint[channel][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[channel][0][1];
             }
             break;
         default:
             break;
     }
-    if (grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0] < 255) {
-        for (c2 = grd.drwpoint[grd.channel_mode][((grd.poic[grd.channel_mode])-1)][0]; c2 < 256; c2++) {
-            grd.ovalue[grd.channel_mode][c2] = grd.drwpoint[grd.channel_mode][(grd.poic[grd.channel_mode]-1)][1];
+    if (grd.drwpoint[channel][((grd.poic[channel])-1)][0] < 255) {
+        for (c2 = grd.drwpoint[channel][((grd.poic[channel])-1)][0]; c2 < 256; c2++) {
+            grd.ovalue[channel][c2] = grd.drwpoint[channel][(grd.poic[channel]-1)][1];
         }
     }
-    switch (grd.channel_mode) { //for faster RGB modes
+    switch (channel) { //for faster RGB modes
         case CHANNEL_RGB:
             for (i=0;i<256;i++) {
                 grd.rvalue[0][i] = (grd.ovalue[0][i] << 16);
@@ -626,13 +626,10 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     grd.drwpoint[i][1][0]=255;
                     grd.drwpoint[i][1][1]=255;}
                 noocur=5;}
-            Channel cmtmp=grd.channel_mode;
             for (i=0;i<5;i++) { // calculate curve values
                 grd.drwmode[i]=defDrawMode;
-                grd.channel_mode=Channel(i);
-                CalcCurve(grd);
+                CalcCurve(grd, Channel(i));
             }
-            grd.channel_mode=cmtmp;
             nrf=true;
         }
     }
@@ -736,12 +733,11 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
             }
             for (i=0;i<256;i++) {grd.ovalue[0][i]=temp[i];}
         }
-        Channel cmtmp=grd.channel_mode;
         for (i=0;i<5;i++) { // calculate curve values
-            grd.channel_mode=Channel(i);
-            if (grd.drwmode[i]!=DRAWMODE_PEN) {CalcCurve(grd);}
+            if (grd.drwmode[i] != DRAWMODE_PEN) {
+                CalcCurve(grd, Channel(i));
+            }
         }
-        grd.channel_mode=cmtmp;
         nrf=true;
     }
     else if (type == FILETYPE_SMARTCURVE_HSV)

@@ -103,6 +103,7 @@ struct MyFilterData : Gradation {
     IFilterPreview *ifp;
     int value;
     Space space_mode;
+    Channel channel_mode;
     int xl;
     int yl;
     int offset;
@@ -604,7 +605,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         else {mfd->drwpoint[mfd->channel_mode][mfd->cp][0]=ax;}
                     }
                     }
-                CalcCurve(*mfd);
+                CalcCurve(*mfd, mfd->channel_mode);
                 if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                     hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                     SetWindowText(hWnd, mfd->gamma);}
@@ -668,7 +669,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]++;
                             mfd->psel=true;
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            CalcCurve(*mfd);
+                            CalcCurve(*mfd, mfd->channel_mode);
                             GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                             mfd->ifp->RedoFrame();
                             }
@@ -704,7 +705,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->poic[mfd->channel_mode]=mfd->poic[mfd->channel_mode]--;
                             mfd->cp--;
                             stp=true;
-                            CalcCurve(*mfd);
+                            CalcCurve(*mfd, mfd->channel_mode);
                             GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
@@ -907,7 +908,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]<i){
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][0]++;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
@@ -929,7 +930,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]>i){
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][0]--;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
@@ -976,7 +977,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]<i){
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][1]++;
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
@@ -1022,7 +1023,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]>i){
                         mfd->drwpoint[mfd->channel_mode][mfd->cp][1]--;
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
@@ -1081,7 +1082,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
                         mfd->drwpoint[mfd->channel_mode][1][0]=255;
                         mfd->drwpoint[mfd->channel_mode][1][1]=255;
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         mfd->cp=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1093,7 +1094,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][0][1]=0;
                         mfd->drwpoint[mfd->channel_mode][1][0]=255;
                         mfd->drwpoint[mfd->channel_mode][1][1]=255;
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         mfd->cp=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1107,7 +1108,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         mfd->drwpoint[mfd->channel_mode][1][1]=128;
                         mfd->drwpoint[mfd->channel_mode][2][0]=255;
                         mfd->drwpoint[mfd->channel_mode][2][1]=255;
-                        CalcCurve(*mfd);
+                        CalcCurve(*mfd, mfd->channel_mode);
                         mfd->cp=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1196,7 +1197,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     for (i=0;i<mfd->poic[mfd->channel_mode];i++){
                         mfd->drwpoint[mfd->channel_mode][i][0]=invp[i][0];
                         mfd->drwpoint[mfd->channel_mode][i][1]=invp[i][1];}
-                    CalcCurve(*mfd);
+                    CalcCurve(*mfd, mfd->channel_mode);
                     SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                     SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                     SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
@@ -1324,7 +1325,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                         } else {
-                            CalcCurve(*mfd);
+                            CalcCurve(*mfd, mfd->channel_mode);
                             mfd->cp=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1353,7 +1354,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
                         } else {
-                            CalcCurve(*mfd);
+                            CalcCurve(*mfd, mfd->channel_mode);
                             mfd->cp=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -1554,7 +1555,7 @@ static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode)
             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
         } else {
-            CalcCurve(*mfd);
+            CalcCurve(*mfd, mfd->channel_mode);
             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
