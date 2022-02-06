@@ -186,8 +186,7 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
         {
             grd.drwmode[ch] = drawMode;
             grd.poic[ch] = count;
-            grd.channel_mode = ch;
-            CalcCurve(grd);
+            CalcCurve(grd, ch);
         }
     }
 }
