@@ -71,12 +71,12 @@ class GradationFilter : public GenericVideoFilter
     static CurveFileType parseCurveFileType(const char *, const char *, const char *, IScriptEnvironment *);
     static void parsePoints(Gradation &, DrawMode, const AVSValue &, const char *Name, IScriptEnvironment *);
 
-    enum { iChild, iPmode, iDrawmode, iPoints, iFile, iFtype, iPrecise };
+    enum { iChild, iProcess, iCurveType, iPoints, iFile, iFileType, iPrecise };
 
     static const char *Name()
         { return "Gradation"; }
     static const char *Signature()
-        { return "c[pmode]s[drawmode]s[points].[file]s[ftype]s[precise]b"; }
+        { return "c[process]s[curve_type]s[points].[file]s[file_type]s[precise]b"; }
     static AVSValue __cdecl Create(AVSValue args, void *, IScriptEnvironment *env);
 
 public:
@@ -133,9 +133,9 @@ inline T GradationFilter::parseEnum(const char *str, const char *argName, const 
     return T(parseEnumImpl(str, argName, mappings, N, env));
 }
 
-CurveFileType GradationFilter::parseCurveFileType(const char *filename, const char *ftype, const char *argName, IScriptEnvironment *env)
+CurveFileType GradationFilter::parseCurveFileType(const char *filename, const char *file_type, const char *argName, IScriptEnvironment *env)
 {
-    CurveFileType type = parseEnum<CurveFileType>(ftype, argName, curveFileTypes, env);
+    CurveFileType type = parseEnum<CurveFileType>(file_type, argName, curveFileTypes, env);
     if (type != CurveFileType(-1))
         return type;
     size_t length = strlen(filename);
@@ -197,8 +197,8 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     auto &&grd = std::make_unique<Gradation>();
     Init(*grd, precise);
 
-    if (!args[iPmode].IsString())
-        env->ThrowError("%s: Missing parameter 'pmode'", Name());
+    if (!args[iProcess].IsString())
+        env->ThrowError("%s: Missing parameter 'process'", Name());
     if (args[iPoints].Defined() && !args[iPoints].IsArray())
         env->ThrowError("%s: 'points' is not an array", Name());
     if (!args[iPoints].IsArray() && !args[iFile].IsString())
@@ -209,15 +209,15 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     auto &&child = args[iChild].AsClip();
     auto &vi = child->GetVideoInfo();
     if (!vi.IsRGB32())
-        env->ThrowError("%s: Source must be RGB32", Name());
+        env->ThrowError("%s: Input clip must be RGB32", Name());
 
-    grd->process = parseEnum<ProcessingMode>(args[iPmode].AsString(), "pmode", processingModes, env);
-    DrawMode drawMode = parseEnum<DrawMode>(args[iDrawmode].AsString("spline"), "drawmode", drawModes, env);
+    grd->process = parseEnum<ProcessingMode>(args[iProcess].AsString(), "process", processingModes, env);
+    DrawMode drawMode = parseEnum<DrawMode>(args[iCurveType].AsString("spline"), "curve_type", drawModes, env);
     if (args[iPoints].IsArray())
         parsePoints(*grd, drawMode, args[iPoints], "points", env);
     else
     {
-        CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFtype].AsString("auto"), "ftype", env);
+        CurveFileType type = parseCurveFileType(args[iFile].AsString(), args[iFileType].AsString("auto"), "file_type", env);
         if (!ImportCurve(*grd, args[iFile].AsString(), type, drawMode))
             env->ThrowError("%s: Cannot open file '%s'", Name(), args[iFile].AsString());
     }

@@ -16,15 +16,15 @@ See the [original Readme](https://neosol.at/vdub/readme.html).
 
 ## AviSynth
 
-AviSynth+ 3.7.1 or newer required.
+AviSynth+ 3.7.1 or newer is required.
 
-**Gradation(clip *clip*, string *pmode*, string *drawmode* [, array *points*] [, string *file*, string *ftype*])**
+**Gradation(clip *clip*, string *process*, string *curve_type* [, array *points*] [, string *file*, string *file_type*] [, bool *precise*])**
 
 * *clip* **clip** = *(required)*
 
     Input clip. It must be RGB32.
 
-* *string* **pmode** = *(required)*
+* *string* **process** = *(required)*
 
     Processing mode. It must be one of:
 
@@ -33,7 +33,7 @@ AviSynth+ 3.7.1 or newer required.
     * `"rgbw"`, `"fullw"`: Weighted modes. They differ from the non-weighted ones in the way RGB is processed. First a Y (gray) value of each pixel is calculated. Then the output value of the RGB curve of this Y (RGB input) value is taken and applied to all three components of the pixel the same way.
     * `"yuv"`, `"cmyk"`, `"hsv"`, `"lab"`: It processes each channel individually.
 
-* *string* **drawmode** = `"spline"`
+* *string* **curve_type** = *`"spline"`*
 
     Determines how the filter curves are drawn. This parameter is only meaningful when **points** is provided or when the curves file pointed to by **file** does not imply a draw mode itself (as is the case of `.acv` files). It must be one of:
 
@@ -63,19 +63,24 @@ AviSynth+ 3.7.1 or newer required.
     * `"hsv"`: H, S, V
     * `"lab"`: L, A, B
 
+    If **points** is missing, **file** must be provided instead.
+
 * *string* **file** = *Undefined()*
 
     If provided, it must be a path to a curves file.
-
-    Either **points** or **file** must be provided.
     
-* *string* **ftype** = `"auto"`
+* *string* **file_type** = *`"auto"`*
 
     Used along **file**. It specifies the curves file format, It must be one of:
 
     * `"auto"`: Autodetect according to file extension. Supported formats are `.amp`, `.acv`, `.csv`, `.crv`, `.map`.
-    * `"SmartCurve HSV"`. Must be specified manually sice it also uses the `.amp` extension.
+    * `"SmartCurve HSV"`. Must be specified manually since it also uses the `.amp` extension.
 
+* *bool* **precise** = *`false`*
+
+    Use floating-point precision (slower) instead of integer math.
+
+    This is currently only implemented for **process="hsv"**.
 
 # Build
 
