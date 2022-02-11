@@ -178,7 +178,7 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg);
 static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode);
-static void GrdDrawGradTable(HWND hWnd, uint8_t table[256], int laboff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap);
+static void GrdDrawGradTable(HWND hWnd, const uint8_t table[256], int laboff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap);
 static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
 ///////////////////////////////////////////////////////////////////////////
@@ -366,7 +366,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
             } else {
                 SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[0][mfd->value], FALSE);
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(0, mfd->value), FALSE);
             }
             UpdateItemVisibility(mfd, hdlg);
             switch (mfd->process)
@@ -428,7 +428,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
 
                 BeginPaint(hdlg, &ps);
                 EndPaint(hdlg, &ps);
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                 GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
             }
             return TRUE;
@@ -440,23 +440,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             if (lParam > 32768) {ay = 255;}
             else if (lParam >= mfd->boxy) {ay = 0;}
             else {ay = 255-int(lParam*mfd->scaley+0.5);}
-            if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
-                mfd->ovalue[mfd->channel_mode][ax]=(ay);
-                switch (mfd->channel_mode) { //for faster RGB modes
-                    case 0:
-                            mfd->rvalue[0][ax]=(mfd->ovalue[0][ax]<<16);
-                            mfd->rvalue[2][ax]=(mfd->ovalue[0][ax]-ax)<<16;
-                            mfd->gvalue[0][ax]=(mfd->ovalue[0][ax]<<8);
-                            mfd->gvalue[2][ax]=(mfd->ovalue[0][ax]-ax)<<8;
-                            mfd->bvalue[ax]=mfd->ovalue[0][ax]-ax;
-                    break;
-                    case 1:
-                        mfd->rvalue[1][ax]=(mfd->ovalue[1][ax]<<16);
-                    break;
-                    case 2:
-                        mfd->gvalue[1][ax]=(mfd->ovalue[2][ax]<<8);
-                    break;
-                }
+            if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
+                mfd->ovalue(mfd->channel_mode, ax, ay);
+                InitRGBValues(*mfd, mfd->channel_mode, ax);
                 if (ax > mfd->xl)
                 {
                     if ((ax-(mfd->xl))>1 && (ax-(mfd->xl))<256 && (mfd->xl)<256 && (mfd->yl)<256)
@@ -466,22 +452,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             cy=(((ay-(mfd->yl))<<8)/(ax-(mfd->xl)));
                             for (cx=((mfd->xl)+1);cx<ax;cx++)
                             {
-                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+(((cx-(mfd->xl))*cy)>>8));
-                                switch (mfd->channel_mode) { //for faster RGB modes
-                                    case 0:
-                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
-                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
-                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
-                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
-                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
-                                    break;
-                                    case 1:
-                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
-                                    break;
-                                    case 2:
-                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
-                                    break;
-                                }
+                                uint8_t val = mfd->ovalue(mfd->channel_mode, mfd->xl) + ((cx - mfd->xl)*cy >> 8);
+                                mfd->ovalue(mfd->channel_mode, cx, val);
+                                InitRGBValues(*mfd, mfd->channel_mode, cx);
                             }
                         }
                         else
@@ -489,22 +462,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             cy=(((mfd->yl)-ay)<<8)/(ax-(mfd->xl));
                             for (cx=((mfd->xl)+1);cx<ax;cx++)
                             {
-                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-(((cx-(mfd->xl))*cy)>>8));
-                                switch (mfd->channel_mode) { //for faster RGB modes
-                                    case 0:
-                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
-                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
-                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
-                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
-                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
-                                    break;
-                                    case 1:
-                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
-                                    break;
-                                    case 2:
-                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
-                                    break;
-                                }
+                                uint8_t val = mfd->ovalue(mfd->channel_mode, mfd->xl) - ((cx - mfd->xl)*cy >> 8);
+                                mfd->ovalue(mfd->channel_mode, cx, val);
+                                InitRGBValues(*mfd, mfd->channel_mode, cx);
                             }
                         }
                     }
@@ -518,22 +478,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             cy=((ay-(mfd->yl))<<8)/((mfd->xl)-ax);
                             for (cx=((mfd->xl)-1);cx>ax;cx--)
                             {
-                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])+((((mfd->xl)-cx)*cy)>>8));
-                                switch (mfd->channel_mode) { //for faster RGB modes
-                                    case 0:
-                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
-                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
-                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
-                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
-                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
-                                    break;
-                                    case 1:
-                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
-                                    break;
-                                    case 2:
-                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
-                                    break;
-                                }
+                                uint8_t val = mfd->ovalue(mfd->channel_mode, mfd->xl) + ((mfd->xl - cx)*cy >> 8);
+                                mfd->ovalue(mfd->channel_mode, cx, val);
+                                InitRGBValues(*mfd, mfd->channel_mode, cx);
                             }
                         }
                         else
@@ -541,22 +488,9 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             cy=(((mfd->yl)-ay)<<8)/((mfd->xl)-ax);
                             for (cx=((mfd->xl)-1);cx>ax;cx--)
                             {
-                                mfd->ovalue[mfd->channel_mode][cx]=((mfd->ovalue[mfd->channel_mode][mfd->xl])-((((mfd->xl)-cx)*cy)>>8));
-                                switch (mfd->channel_mode) { //for faster RGB modes
-                                    case 0:
-                                            mfd->rvalue[0][cx]=(mfd->ovalue[0][cx]<<16);
-                                            mfd->rvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<16;
-                                            mfd->gvalue[0][cx]=(mfd->ovalue[0][cx]<<8);
-                                            mfd->gvalue[2][cx]=(mfd->ovalue[0][cx]-cx)<<8;
-                                            mfd->bvalue[cx]=mfd->ovalue[0][cx]-cx;
-                                    break;
-                                    case 1:
-                                        mfd->rvalue[1][cx]=(mfd->ovalue[1][cx]<<16);
-                                    break;
-                                    case 2:
-                                        mfd->gvalue[1][cx]=(mfd->ovalue[2][cx]<<8);
-                                    break;
-                                }
+                                uint8_t val = mfd->ovalue(mfd->channel_mode, mfd->xl) - ((mfd->xl - cx)*cy >> 8);
+                                mfd->ovalue(mfd->channel_mode, cx, val);
+                                InitRGBValues(*mfd, mfd->channel_mode, cx);
                             }
                         }
                     }
@@ -613,7 +547,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             }
             SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, ay, FALSE);
-            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
             mfd->ifp->RedoFrame();
             break;
 
@@ -639,14 +573,14 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->psel=true;
                             stp=true;
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                         }
                         else {
                             mfd->cp=i;
                             mfd->psel=true;
                             stp=true;
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                     }
                 }
                 if (mfd->drwmode[mfd->channel_mode]!=DRAWMODE_GAMMA){ // add point
@@ -670,7 +604,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->psel=true;
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                             CalcCurve(*mfd, mfd->channel_mode);
-                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                             mfd->ifp->RedoFrame();
                             }
                     }
@@ -691,7 +625,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
             if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
                 mfd->value=ax;
                 SetDlgItemInt(hdlg, IDC_VALUE, ax, FALSE);
-                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][ax], FALSE);}
+                SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, ax), FALSE);}
             else if ((mfd->drwmode[mfd->channel_mode]==DRAWMODE_LINEAR || mfd->drwmode[mfd->channel_mode]==DRAWMODE_SPLINE) && mfd->poic[mfd->channel_mode]>2){ // delete point
                 stp=false;
                 ptp=false;
@@ -706,7 +640,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             mfd->cp--;
                             stp=true;
                             CalcCurve(*mfd, mfd->channel_mode);
-                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                            GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
@@ -772,7 +706,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                         mfd->value=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                     } else {
                         mfd->cp=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
@@ -806,7 +740,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             CheckDlgButton(hdlg, IDC_RADIOGM, BST_CHECKED);
                             break;
                     }
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     mfd->ifp->RedoFrame();
                 }
                 break;
@@ -900,7 +834,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->value < 255) {
                         mfd->value++;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);}
                 }
                 else {
                     if (mfd->cp==mfd->poic[mfd->channel_mode]-1) {i=255;}
@@ -912,7 +846,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         mfd->ifp->RedoFrame();
                     }
                 }
@@ -922,7 +856,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     if (mfd->value > 0) {
                         mfd->value--;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);}
                 }
                 else {
                     if (mfd->cp==0) {i=0;}
@@ -934,32 +868,20 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         mfd->ifp->RedoFrame();
                     }
                 }
 
                 break;
             case IDC_OUTPUTPLUS:
-                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
-                    if (mfd->ovalue[mfd->channel_mode][mfd->value] < 255) {
-                        mfd->ovalue[mfd->channel_mode][mfd->value]++;
-                        switch (mfd->channel_mode) { //for faster RGB modes
-                            case 0:
-                                    mfd->rvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<16);
-                                    mfd->rvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<16;
-                                    mfd->gvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<8);
-                                    mfd->gvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<8;
-                                    mfd->bvalue[mfd->value]=mfd->ovalue[0][mfd->value]-mfd->value;
-                            break;
-                            case 1:
-                                mfd->rvalue[1][mfd->value]=(mfd->ovalue[1][mfd->value]<<16);
-                            break;
-                            case 2:
-                                mfd->gvalue[1][mfd->value]=(mfd->ovalue[2][mfd->value]<<8);
-                            break;}
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
+                    if (mfd->ovalue(mfd->channel_mode, mfd->value) < 255) {
+                        mfd->ovalue(mfd->channel_mode, mfd->value, mfd->ovalue(mfd->channel_mode, mfd->value) + 1);
+                        InitRGBValues(*mfd, mfd->channel_mode, mfd->value);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
+                    }
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     mfd->ifp->RedoFrame();
                 }
                 else {
@@ -981,31 +903,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         mfd->ifp->RedoFrame();
                     }
                 }
                 break;
             case IDC_OUTPUTMINUS:
-                if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_PEN){
-                    if (mfd->ovalue[mfd->channel_mode][mfd->value] > 0) {
-                        mfd->ovalue[mfd->channel_mode][mfd->value]--;
-                        switch (mfd->channel_mode) { //for faster RGB modes
-                            case 0:
-                                    mfd->rvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<16);
-                                    mfd->rvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<16;
-                                    mfd->gvalue[0][mfd->value]=(mfd->ovalue[0][mfd->value]<<8);
-                                    mfd->gvalue[2][mfd->value]=(mfd->ovalue[0][mfd->value]-mfd->value)<<8;
-                                    mfd->bvalue[mfd->value]=mfd->ovalue[0][mfd->value]-mfd->value;
-                            break;
-                            case 1:
-                                mfd->rvalue[1][mfd->value]=(mfd->ovalue[1][mfd->value]<<16);
-                            break;
-                            case 2:
-                                mfd->gvalue[1][mfd->value]=(mfd->ovalue[2][mfd->value]<<8);
-                            break;}
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);}
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
+                    if (mfd->ovalue(mfd->channel_mode, mfd->value) > 0) {
+                        mfd->ovalue(mfd->channel_mode, mfd->value, mfd->ovalue(mfd->channel_mode, mfd->value) - 1);
+                        InitRGBValues(*mfd, mfd->channel_mode, mfd->value);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
+                    }
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     mfd->ifp->RedoFrame();
                 }
                 else {
@@ -1027,7 +937,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         if (mfd->drwmode[mfd->channel_mode]==DRAWMODE_GAMMA){
                             hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                             SetWindowText(hWnd, mfd->gamma);}
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         mfd->ifp->RedoFrame();
                     }
                 }
@@ -1039,7 +949,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                 }
                 break;
             case IDC_POINTMINUS:
@@ -1049,32 +959,19 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
                         SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
                         SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);}
                 }
                 break;
             case IDC_RESET: // reset the curve
                 switch (mfd->drwmode[mfd->channel_mode]){
                     case DRAWMODE_PEN:
                         for (i=0; i<256; i++) {
-                            mfd->ovalue[mfd->channel_mode][i] = i;
-                            switch (mfd->channel_mode) { //for faster RGB modes
-                            case 0:
-                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
-                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
-                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
-                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
-                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
-                            break;
-                            case 1:
-                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
-                            break;
-                            case 2:
-                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
-                            break;}
+                            mfd->ovalue(mfd->channel_mode, i, i);
+                            InitRGBValues(*mfd, mfd->channel_mode, i);
                         }
                         mfd->value=0;
                         SetDlgItemInt(hdlg, IDC_VALUE, mfd->value, FALSE);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                         break;
                     case DRAWMODE_LINEAR:
                         mfd->poic[mfd->channel_mode]=2;
@@ -1117,18 +1014,18 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         SetWindowText(hWnd, mfd->gamma);
                         break;
                     }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                 mfd->ifp->RedoFrame();
                 break;
             case IDC_SMOOTH:  // smooth the curve
                 if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN){
-                    if (mfd->ovalue[mfd->channel_mode][0]<=mfd->ovalue[mfd->channel_mode][255]) {
-                        a = mfd->ovalue[mfd->channel_mode][0];
-                        b = mfd->ovalue[mfd->channel_mode][255]-a;}
-                    else if (mfd->ovalue[mfd->channel_mode][0]>mfd->ovalue[mfd->channel_mode][255]) {
-                        a = mfd->ovalue[mfd->channel_mode][0];
-                        b = -a+mfd->ovalue[mfd->channel_mode][255];}
-                    for (i=0; i<256; i++) {delta[i] = mfd->ovalue[mfd->channel_mode][i]-(((i*b)/255)+a);}
+                    if (mfd->ovalue(mfd->channel_mode, 0)<=mfd->ovalue(mfd->channel_mode, 255)) {
+                        a = mfd->ovalue(mfd->channel_mode, 0);
+                        b = mfd->ovalue(mfd->channel_mode, 255)-a;}
+                    else if (mfd->ovalue(mfd->channel_mode, 0)>mfd->ovalue(mfd->channel_mode, 255)) {
+                        a = mfd->ovalue(mfd->channel_mode, 0);
+                        b = -a+mfd->ovalue(mfd->channel_mode, 255);}
+                    for (i=0; i<256; i++) {delta[i] = mfd->ovalue(mfd->channel_mode, i)-(((i*b)/255)+a);}
                     for (i=0; i<255; i++) {
                         if (i < 2)
                         {
@@ -1148,47 +1045,24 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                     }
                     for (i=255; i>0; i--) {delta[i]=inv[i];}
                     for (i=0; i<256; i++) {
-                        mfd->ovalue[mfd->channel_mode][i] = delta[i]+((i*b)/255)+a;
-                        switch (mfd->channel_mode) { //for faster RGB modes
-                            case 0:
-                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
-                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
-                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
-                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
-                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
-                            break;
-                            case 1:
-                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
-                            break;
-                            case 2:
-                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
-                            break;}
+                        mfd->ovalue(mfd->channel_mode, i, delta[i]+((i*b)/255)+a);
+                        InitRGBValues(*mfd, mfd->channel_mode, i);
                     }
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
-                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
+                    GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                     mfd->ifp->RedoFrame();
                 }
                 break;
             case IDC_INVERTX:
-                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN){
-                    for (i=0; i<256; i++) {inv[255-i] = mfd->ovalue[mfd->channel_mode][i];}
-                    for (i=0; i<256; i++) {mfd->ovalue[mfd->channel_mode][i] = inv[i];
-                    switch (mfd->channel_mode) { //for faster RGB modes
-                            case 0:
-                                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
-                                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
-                                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
-                                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
-                                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
-                            break;
-                            case 1:
-                                mfd->rvalue[1][i]=(mfd->ovalue[1][i]<<16);
-                            break;
-                            case 2:
-                                mfd->gvalue[1][i]=(mfd->ovalue[2][i]<<8);
-                            break;}
+                if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
+                    for (i=0; i<256; i++) {
+                        double a = mfd->ovaluef(mfd->channel_mode, i);
+                        double b = mfd->ovaluef(mfd->channel_mode, 255 - i);
+                        mfd->ovaluef(mfd->channel_mode, i, b);
+                        mfd->ovaluef(mfd->channel_mode, 255 - i, a);
                     }
-                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                    InitRGBValues(*mfd, mfd->channel_mode, i);
+                    SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                 }
                 else {
                     for (i=0;i<mfd->poic[mfd->channel_mode];i++){
@@ -1205,7 +1079,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         hWnd = GetDlgItem(hdlg, IDC_GAMMAVALUE);
                         SetWindowText(hWnd, mfd->gamma);}
                 }
-                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                 mfd->ifp->RedoFrame();
                 break;
             case IDC_RADIOPM:
@@ -1319,11 +1193,11 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         hWnd = GetDlgItem(hdlg, IDC_CHANNEL);
                         SendMessage(hWnd, CB_SETCURSEL, mfd->channel_mode, 0);
                         mfd->channel_mode = Channel(SendDlgItemMessage(hdlg, IDC_CHANNEL, CB_GETCURSEL, 0, 0) + mfd->offset);
-                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                        SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                         if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                         } else {
                             CalcCurve(*mfd, mfd->channel_mode);
                             mfd->cp=0;
@@ -1332,7 +1206,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                         }
                         UpdateItemVisibility(mfd, hdlg);
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                         mfd->ifp->RedoFrame();
                     }
@@ -1352,7 +1226,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         if (mfd->drwmode[mfd->channel_mode] == DRAWMODE_PEN) {
                             mfd->value=0;
                             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+                            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
                         } else {
                             CalcCurve(*mfd, mfd->channel_mode);
                             mfd->cp=0;
@@ -1361,7 +1235,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
                         }
                         UpdateItemVisibility(mfd, hdlg);
-                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+                        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
                         GrdDrawBorder(GetDlgItem(hdlg, IDC_HBORDER), GetDlgItem(hdlg, IDC_VBORDER), mfd);
                         mfd->ifp->RedoFrame();
                     }
@@ -1416,21 +1290,8 @@ static void ScriptConfig(IScriptInterpreter *isi, void *lpVoid, CScriptValue *ar
     for (j=0; j<5; j++) { //read raw curve data
         for (i=(j*256); i<((j+1)*256); i++) {
             sscanf(tmp + 2*i,"%02x", &t);
-            mfd->ovalue[j][i-(j*256)] = t;
-            switch (j) { //for faster RGB modes
-                case 0:
-                    mfd->rvalue[0][i]=(mfd->ovalue[0][i]<<16);
-                    mfd->rvalue[2][i]=(mfd->ovalue[0][i]-i)<<16;
-                    mfd->gvalue[0][i]=(mfd->ovalue[0][i]<<8);
-                    mfd->gvalue[2][i]=(mfd->ovalue[0][i]-i)<<8;
-                    mfd->bvalue[i]=mfd->ovalue[0][i]-i;
-                break;
-                case 1:
-                    mfd->rvalue[1][i-256]=(mfd->ovalue[1][i-256]<<16);
-                break;
-                case 2:
-                    mfd->gvalue[1][i-512]=(mfd->ovalue[2][i-512]<<8);
-                break;}
+            mfd->ovalue(j, i - j*256, t);
+            InitRGBValues(*mfd, Channel(j), i - j*256);
         }
     }
     if (argc>2){ //new format extra data
@@ -1475,7 +1336,7 @@ static bool FssProc(FilterActivation *fa, const FilterFunctions *ff, char *buf, 
     os << "Config(" << mfd->process << ",\"";
     for (j=0; j<5; j++) {
         for (i=0; i<256; i++) {
-            sprintf(tmp, "%02x", mfd->ovalue[j][i]);
+            sprintf(tmp, "%02x", mfd->ovalue(j, i));
             os << tmp;
         }
     }
@@ -1553,20 +1414,20 @@ static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode)
         if (newMode == DRAWMODE_PEN) {
             mfd->value = 0;
             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->value), FALSE);
-            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue[mfd->channel_mode][mfd->value], FALSE);
+            SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, mfd->ovalue(mfd->channel_mode, mfd->value), FALSE);
         } else {
             CalcCurve(*mfd, mfd->channel_mode);
             SetDlgItemInt(hdlg, IDC_VALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][0]), FALSE);
             SetDlgItemInt(hdlg, IDC_OUTPUTVALUE, (mfd->drwpoint[mfd->channel_mode][mfd->cp][1]), FALSE);
             SetDlgItemInt(hdlg, IDC_POINTNO, (mfd->cp+1), FALSE);
         }
-        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue[(mfd->channel_mode)], mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
+        GrdDrawGradTable(GetDlgItem(hdlg, IDC_GRADCURVE), mfd->ovalue(mfd->channel_mode), mfd->laboff, mfd->drwmode[mfd->channel_mode], mfd->drwpoint[(mfd->channel_mode)], mfd->poic[(mfd->channel_mode)], mfd->cp);
         UpdateItemVisibility(mfd, hdlg);
         mfd->ifp->RedoFrame();
     }
 }
 
-static void GrdDrawGradTable(HWND hWnd, uint8_t table[256], int loff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap)  // draw the curve
+static void GrdDrawGradTable(HWND hWnd, const uint8_t table[256], int loff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap)  // draw the curve
 {
     RECT rect;
 

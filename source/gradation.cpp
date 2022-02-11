@@ -39,7 +39,7 @@ struct HSV { T h, s, v; };
 
 static inline RGB<uint8_t> unpackRGB(uint32_t p);
 static inline uint32_t packRGB(RGB<uint8_t> p);
-static inline double applyCurve(const uint8_t y[256], double x);
+static inline double interpolateCurveValue(const double y[256], double x);
 
 static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in);
 static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in);
@@ -94,7 +94,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue[0][(old_pixel & 0x0000FF)];
+                new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue(0, old_pixel & 0x0000FF);
                 *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -107,8 +107,8 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];
-                new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue[0][(med_pixel & 0x0000FF)];
+                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue(3, old_pixel & 0x0000FF);
+                new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue(0, med_pixel & 0x0000FF);
                 *dst++ = new_pixel | (old_pixel & 0xFF000000U);
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -144,7 +144,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue[3][(old_pixel & 0x0000FF)];
+                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue(3, old_pixel & 0x0000FF);
                 r = (med_pixel & 0xFF0000);
                 g = (med_pixel & 0x00FF00);
                 b = (med_pixel & 0x0000FF);
@@ -189,9 +189,9 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 y = (8421375 - 11058 * r - 21710 * g + 32768 * b)>>16; //correct rounding +32768
                 z = (8421375 + 32768 * r - 27439 * g - 5329 * b)>>16; //correct rounding +32768
                 // Applying the curves
-                x = (grd.ovalue[1][x])<<16;
-                y = (grd.ovalue[2][y])-128;
-                z = (grd.ovalue[3][z])-128;
+                x = (grd.ovalue(1, x))<<16;
+                y = (grd.ovalue(2, y))-128;
+                z = (grd.ovalue(3, z))-128;
                 // YUV to RGB
                 rr = (32768 + x + 91881 * z); //correct rounding +32768
                 if (rr<0) {r=0;} else if (rr>16711680) {r=16711680;} else {r = (rr & 0xFF0000);}
@@ -237,10 +237,10 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                     y = (((b-g)<<8) + divh)/div; //correct rounding  yy+(div>>1)
                     z = 0;}
                 // Applying the curves
-                x = grd.ovalue[1][x];
-                y = grd.ovalue[2][y];
-                z = grd.ovalue[3][z];
-                v = grd.ovalue[4][v];
+                x = grd.ovalue(1, x);
+                y = grd.ovalue(2, y);
+                z = grd.ovalue(3, z);
+                v = grd.ovalue(4, v);
                 // CMYK to RGB
                 r = 255-((((x*(256-v))+128)>>8)+v); //correct rounding rr+128;
                 if (r<0) r=0;
@@ -282,9 +282,9 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
                 gg = (lab & 0x00FF00)>>8;
                 bb = (lab & 0x0000FF);
                 // Applying the curves
-                x = grd.ovalue[1][rr];
-                y = grd.ovalue[2][gg];
-                z = grd.ovalue[3][bb];
+                x = grd.ovalue(1, rr);
+                y = grd.ovalue(2, gg);
+                z = grd.ovalue(3, bb);
                 //Lab to XYZ
                 new_pixel = labrgb[((x<<16)+(y<<8)+z)];
                 *dst++ = new_pixel | (old_pixel & 0xFF000000U);
@@ -311,18 +311,18 @@ void Init(Gradation &grd, bool precise) {
     grd.process = PROCMODE_RGB;
     sprintf(grd.gamma, "%.3lf", 1.000);
     for (i=0; i<256; i++) {
-        grd.ovalue[0][i] = i;
-        grd.rvalue[0][i]=(grd.ovalue[0][i]<<16);
-        grd.rvalue[2][i]=(grd.ovalue[0][i]-i)<<16;
-        grd.gvalue[0][i]=(grd.ovalue[0][i]<<8);
-        grd.gvalue[2][i]=(grd.ovalue[0][i]-i)<<8;
-        grd.bvalue[i]=(grd.ovalue[0][i]-i);
-        grd.ovalue[1][i] = i;
-        grd.rvalue[1][i]=(grd.ovalue[1][i]<<16);
-        grd.ovalue[2][i] = i;
-        grd.gvalue[1][i]=(grd.ovalue[2][i]<<8);
-        grd.ovalue[3][i] = i;
-        grd.ovalue[4][i] = i;
+        grd.ovalue(0, i, i);
+        grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
+        grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
+        grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
+        grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
+        grd.bvalue[i]=(grd.ovalue(0, i)-i);
+        grd.ovalue(1, i, i);
+        grd.rvalue[1][i]=(grd.ovalue(1, i)<<16);
+        grd.ovalue(2, i, i);
+        grd.gvalue[1][i]=(grd.ovalue(2, i)<<8);
+        grd.ovalue(3, i, i);
+        grd.ovalue(4, i, i);
     }
 }
 
@@ -336,7 +336,6 @@ void CalcCurve(Gradation &grd, Channel channel)
     int dyg;
     int i;
     int j;
-    int vy;
     double div;
     double inc;
     double ofs;
@@ -349,7 +348,7 @@ void CalcCurve(Gradation &grd, Channel channel)
 
     if (grd.drwpoint[channel][0][0]>0) {
         for (c2=0;c2<grd.drwpoint[channel][0][0];c2++) {
-            grd.ovalue[channel][c2]=grd.drwpoint[channel][0][1];
+            grd.ovalue(channel, c2, grd.drwpoint[channel][0][1]);
         }
     }
     switch (grd.drwmode[channel]){
@@ -358,8 +357,9 @@ void CalcCurve(Gradation &grd, Channel channel)
                 div=(grd.drwpoint[channel][(c1+1)][0]-grd.drwpoint[channel][c1][0]);
                 inc=(grd.drwpoint[channel][(c1+1)][1]-grd.drwpoint[channel][c1][1])/div;
                 ofs=grd.drwpoint[channel][c1][1]-inc*grd.drwpoint[channel][c1][0];
-                for (c2=grd.drwpoint[channel][c1][0];c2<(grd.drwpoint[channel][(c1+1)][0]+1);c2++)
-                {grd.ovalue[channel][c2]=int(c2*inc+ofs+0.5);}
+                for (c2 = grd.drwpoint[channel][c1][0]; c2 < grd.drwpoint[channel][c1+1][0]+1; ++c2) {
+                    grd.ovaluef(channel, c2, c2*inc+ofs);
+                }
             }
             break;
         case DRAWMODE_SPLINE:
@@ -401,11 +401,10 @@ void CalcCurve(Gradation &grd, Channel channel)
                 a[c2]=(double(b[c2+1]-b[c2])/double(3*(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])));
                 c[c2]=double(grd.drwpoint[channel][c2+1][1]-grd.drwpoint[channel][c2][1])/double(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])-double(b[c2+1]-b[c2])*double(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0])/3-b[c2]*(grd.drwpoint[channel][c2+1][0]-grd.drwpoint[channel][c2][0]);}
             for (c1=0;c1<(grd.poic[channel]-1);c1++){ //calculate the y values of the spline curve
-                for (c2=grd.drwpoint[channel][(c1)][0];c2<(grd.drwpoint[channel][(c1+1)][0]+1);c2++){
-                    vy=int(0.5+a[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+b[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+c[c1]*(c2-grd.drwpoint[channel][c1][0])+grd.drwpoint[channel][c1][1]);
-                    if (vy>255) {grd.ovalue[channel][c2]=255;}
-                    else if (vy<0) {grd.ovalue[channel][c2]=0;}
-                    else {grd.ovalue[channel][c2]=vy;}}
+                for (c2 = grd.drwpoint[channel][c1][0]; c2 < grd.drwpoint[channel][c1+1][0]+1; ++c2) {
+                    double vy = a[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+b[c1]*(c2-grd.drwpoint[channel][c1][0])*(c2-grd.drwpoint[channel][c1][0])+c[c1]*(c2-grd.drwpoint[channel][c1][0])+grd.drwpoint[channel][c1][1];
+                    grd.ovaluef(channel, c2, MIN(MAX(vy, 0.0), 255.0));
+                }
             }
             break;
         case DRAWMODE_GAMMA:
@@ -415,8 +414,8 @@ void CalcCurve(Gradation &grd, Channel channel)
             dyg=grd.drwpoint[channel][1][1]-grd.drwpoint[channel][0][1];
             ga=log(double(dyg)/double(dy))/log(double(dxg)/double(dx));
             sprintf(grd.gamma, "%.3lf", 1/ga);
-            for (c1=0; c1<dx+1; c1++){
-                grd.ovalue[channel][c1+grd.drwpoint[channel][0][0]]=int(0.5+dy*(pow((double(c1)/dx),(ga))))+grd.drwpoint[channel][0][1];
+            for (c1 = 0; c1 < dx+1; ++c1) {
+                grd.ovaluef(channel, c1+grd.drwpoint[channel][0][0], dy*(pow((double(c1)/dx),(ga)))+grd.drwpoint[channel][0][1]);
             }
             break;
         default:
@@ -424,24 +423,16 @@ void CalcCurve(Gradation &grd, Channel channel)
     }
     if (grd.drwpoint[channel][((grd.poic[channel])-1)][0] < 255) {
         for (c2 = grd.drwpoint[channel][((grd.poic[channel])-1)][0]; c2 < 256; c2++) {
-            grd.ovalue[channel][c2] = grd.drwpoint[channel][(grd.poic[channel]-1)][1];
+            grd.ovalue(channel, c2, grd.drwpoint[channel][grd.poic[channel]-1][1]);
         }
     }
     switch (channel) { //for faster RGB modes
         case CHANNEL_RGB:
-            for (i=0;i<256;i++) {
-                grd.rvalue[0][i] = (grd.ovalue[0][i] << 16);
-                grd.rvalue[2][i] = (grd.ovalue[0][i]-i) <<16;
-                grd.gvalue[0][i] = (grd.ovalue[0][i] << 8);
-                grd.gvalue[2][i] = (grd.ovalue[0][i]-i) << 8;
-                grd.bvalue[i] = grd.ovalue[0][i]-i;
-            }
-            break;
         case CHANNEL_RED:
-            for (i=0;i<256;i++) {grd.rvalue[1][i] = (grd.ovalue[1][i] << 16);}
-            break;
         case CHANNEL_GREEN:
-            for (i=0;i<256;i++) {grd.gvalue[1][i] = (grd.ovalue[2][i] << 8);}
+            for (i=0;i<256;i++) {
+                InitRGBValues(grd, CHANNEL_RGB, i);
+            }
             break;
         default:
             break;
@@ -633,7 +624,7 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                 }
                 if (i>=curposnext) { // read raw curve data
                     cordpos=0;
-                    if (count<256) {grd.ovalue[curpos][count]=cv;}
+                    if (count<256) {grd.ovalue(curpos, count, cv);}
                     count++;}
                 if (i == cordpos) {
                     if (grd.drwmode[curpos] == DRAWMODE_GAMMA && cordcount==1) {
@@ -670,11 +661,11 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                 grd.drwpoint[0][i][1]=drwtmp[i][1];}
             grd.poic[0]=pictmp;
             grd.drwmode[0]=drwmodtmp;
-            for (i=0;i<256;i++) {temp[i]=grd.ovalue[4][i];}
+            for (i=0;i<256;i++) {temp[i]=grd.ovalue(4, i);}
             for (j=4;j>0;j--) {
-                for (i=0;i<256;i++) {grd.ovalue[j][i]=grd.ovalue[j-1][i];}
+                for (i=0;i<256;i++) {grd.ovalue(j, i, grd.ovalue(j-1, i));}
             }
-            for (i=0;i<256;i++) {grd.ovalue[0][i]=temp[i];}
+            for (i=0;i<256;i++) {grd.ovalue(0, i, temp[i]);}
         }
         for (i=0;i<5;i++) { // calculate curve values
             if (grd.drwmode[i] != DRAWMODE_PEN) {
@@ -724,43 +715,43 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
     if (nrf==false) { //fill curves for non coordinates file types
         if (lSize > 768){
             for(i=0; i < 256; i++) {
-                grd.ovalue[0][i] = stor[i];
-                grd.rvalue[0][i]=(grd.ovalue[0][i]<<16);
-                grd.rvalue[2][i]=(grd.ovalue[0][i]-i)<<16;
-                grd.gvalue[0][i]=(grd.ovalue[0][i]<<8);
-                grd.gvalue[2][i]=(grd.ovalue[0][i]-i)<<8;
-                grd.bvalue[i]=grd.ovalue[0][i]-i;
+                grd.ovalue(0, i, stor[i]);
+                grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
+                grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
+                grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
+                grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
+                grd.bvalue[i]=grd.ovalue(0, i)-i;
             }
             for(i=256; i < 512; i++) {
-                grd.ovalue[1][(i-256)] = stor[i];
-                grd.rvalue[1][(i-256)]=(grd.ovalue[1][(i-256)]<<16);
+                grd.ovalue(1, i-256, stor[i]);
+                grd.rvalue[1][(i-256)]=(grd.ovalue(1, i-256)<<16);
             }
             for(i=512; i < 768; i++) {
-                grd.ovalue[2][(i-512)] = stor[i];
-                grd.gvalue[1][(i-512)]=(grd.ovalue[2][(i-512)]<<8);
+                grd.ovalue(2, i-512, stor[i]);
+                grd.gvalue[1][(i-512)]=(grd.ovalue(2, i-512)<<8);
             }
-            for(i=768; i < 1024; i++) {grd.ovalue[3][(i-768)] = stor[i];}
-            for(i=1024; i < 1280; i++) {grd.ovalue[4][(i-1024)] = stor[i];}
+            for(i=768; i < 1024; i++) {grd.ovalue(3, i-768, stor[i]);}
+            for(i=1024; i < 1280; i++) {grd.ovalue(4, i-1024, stor[i]);}
         }
         if (lSize < 769 && lSize > 256){
             for(i=0; i < 256; i++) {
-                grd.ovalue[1][i] = stor[i];
-                grd.rvalue[1][i]=(grd.ovalue[1][i]<<16);
+                grd.ovalue(1, i, stor[i]);
+                grd.rvalue[1][i]=(grd.ovalue(1, i)<<16);
             }
             for(i=256; i < 512; i++) {
-                grd.ovalue[2][(i-256)] = stor[i];
-                grd.gvalue[1][(i-256)]=(grd.ovalue[2][(i-256)]<<8);
+                grd.ovalue(2, i-256, stor[i]);
+                grd.gvalue[1][(i-256)]=(grd.ovalue(2, i-256)<<8);
             }
-            for(i=512; i < 768; i++) {grd.ovalue[3][(i-512)] = stor[i];}
+            for(i=512; i < 768; i++) {grd.ovalue(3, i-512, stor[i]);}
         }
         if (lSize < 257 && lSize > 0) {
             for(i=0; i < 256; i++) {
-                grd.ovalue[0][i] = stor[i];
-                grd.rvalue[0][i]=(grd.ovalue[0][i]<<16);
-                grd.rvalue[2][i]=(grd.ovalue[0][i]-i)<<16;
-                grd.gvalue[0][i]=(grd.ovalue[0][i]<<8);
-                grd.gvalue[2][i]=(grd.ovalue[0][i]-i)<<8;
-                grd.bvalue[i]=grd.ovalue[0][i]-i;
+                grd.ovalue(0, i, stor[i]);
+                grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
+                grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
+                grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
+                grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
+                grd.bvalue[i]=grd.ovalue(0, i)-i;
             }
         }
         for (i=0;i<5;i++) {
@@ -802,7 +793,7 @@ void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
         pFile = fopen(filename,"w");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
-                fprintf (pFile, "%d\n",(grd.ovalue[j][i]));
+                fprintf(pFile, "%d\n", grd.ovalue(j, i));
             }
         }
     }
@@ -810,7 +801,7 @@ void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
         pFile = fopen(filename,"wb");
         for (j=0; j<5;j++) {
             for (i=0; i<256; i++) {
-                fputc(grd.ovalue[j][i], pFile);
+                fputc(grd.ovalue(j, i), pFile);
             }
         }
     }
@@ -831,15 +822,13 @@ static inline uint32_t packRGB(RGB<uint8_t> p)
     return ((p.r << 16) + (p.g << 8) + p.b);
 }
 
-static inline double applyCurve(const uint8_t y[256], double x)
+static inline double interpolateCurveValue(const double y[256], double x)
 {
     // Interpolate from two points.
     uint8_t x1 = uint8_t(x);
     uint8_t x2 = x1 + 1; // Native wrapping: 255 + 1 -> 0.
-    uint8_t cx1 = y[x1];
-    uint8_t cx2 = y[x2];
     double ff = x - x1;
-    return (1.0 - ff)*cx1 + ff*cx2;
+    return (1.0 - ff)*y[x1] + ff*y[x2];
 }
 
 static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
@@ -872,9 +861,9 @@ static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
     else
         h = s = 0;
     // Apply the curves
-    h = grd.ovalue[1][h];
-    s = grd.ovalue[2][s];
-    v = grd.ovalue[3][v];
+    h = grd.ovalue(1, h);
+    s = grd.ovalue(2, s);
+    v = grd.ovalue(3, v);
     // HSV to RGB
     if (s == 0)
         return {v, v, v};
@@ -924,9 +913,9 @@ static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
         double(in.b),
     });
     auto rgb = hsv2rgb({
-        applyCurve(grd.ovalue[1], hsv.h),
-        applyCurve(grd.ovalue[2], hsv.s),
-        applyCurve(grd.ovalue[3], hsv.v),
+        interpolateCurveValue(grd.ovaluef(1), hsv.h),
+        interpolateCurveValue(grd.ovaluef(2), hsv.s),
+        interpolateCurveValue(grd.ovaluef(3), hsv.v),
     });
     return {
         uint8_t(rgb.r + 0.5),
