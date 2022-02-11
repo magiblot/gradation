@@ -124,7 +124,8 @@ struct Gradation {
     int rvalue[3][256];
     int gvalue[3][256];
     int bvalue[256];
-    uint8_t ovalue[5][256];
+    uint8_t _ovalue[5][256];
+    double _ovaluef[5][256];
     ProcessingMode process;
     uint8_t
         precise         : 1,
@@ -133,6 +134,25 @@ struct Gradation {
     uint8_t drwpoint[5][maxPoints][2];
     int poic[5];
     char gamma[10];
+
+    template <class I>
+    constexpr const uint8_t (&ovalue(I &&i) const) [256] { return _ovalue[i]; }
+    template <class I>
+    constexpr const double (&ovaluef(I &&i) const) [256] { return _ovaluef[i]; }
+    template <class I, class J>
+    constexpr uint8_t ovalue(I &&i, J &&j) const { return _ovalue[i][j]; }
+    template <class I, class J>
+    constexpr double ovaluef(I &&i, J &&j) const { return _ovaluef[i][j]; }
+    template <class I, class J>
+    constexpr void ovalue(I &&i, J &&j, uint8_t value) {
+        _ovalue[i][j] = value;
+        _ovaluef[i][j] = value;
+    }
+    template <class I, class J>
+    constexpr void ovaluef(I &&i, J &&j, double value) {
+        _ovalue[i][j] = int(0.5 + value);
+        _ovaluef[i][j] = value;
+    }
 };
 
 void Init(Gradation &grd, bool precise=false);
@@ -142,6 +162,27 @@ void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd, Channel channel);
 bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode=DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
+
+inline void InitRGBValues(Gradation &grd, Channel channel, int x) {
+    uint8_t val = grd.ovalue(channel, x);
+    switch (channel) { // for faster RGB modes
+        case CHANNEL_RGB:
+            grd.rvalue[0][x] = val << 16;
+            grd.rvalue[2][x] = (val - x) << 16;
+            grd.gvalue[0][x] = val << 8;
+            grd.gvalue[2][x] = (val - x) << 8;
+            grd.bvalue[x] = val - x;
+            break;
+        case CHANNEL_RED:
+            grd.rvalue[1][x] = val << 16;
+            break;
+        case CHANNEL_GREEN:
+            grd.gvalue[1][x] = val << 8;
+            break;
+        default:
+            break;
+    }
+}
 
 inline Space GetSpace(ProcessingMode process) {
     switch (process) {
