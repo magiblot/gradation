@@ -1,5 +1,4 @@
-#include <avisynth.h>
-#include "gradation.h"
+#include "avs.h"
 
 #include <string>
 #include <memory>
@@ -51,13 +50,16 @@ static constexpr std::pair<const char *, int> curveFileExtensions[] =
     {".map", FILETYPE_MAP},
 };
 
-class GradationFilter : public GenericVideoFilter
+class GradationFilter final : public GenericVideoFilter
 {
     const std::unique_ptr<const Gradation> grd;
+    FrameProcesser &processFrame;
 
-    GradationFilter(PClip &aChild, std::unique_ptr<Gradation> &aGrd) :
+    GradationFilter( PClip &aChild, std::unique_ptr<Gradation> &aGrd,
+                     FrameProcesser &aProcessFrame) :
         GenericVideoFilter(std::move(aChild)),
-        grd(std::move(aGrd))
+        grd(std::move(aGrd)),
+        processFrame(aProcessFrame)
     {
     }
 
@@ -70,6 +72,9 @@ class GradationFilter : public GenericVideoFilter
 
     static CurveFileType parseCurveFileType(const char *, const char *, const char *, IScriptEnvironment *);
     static void parsePoints(Gradation &, DrawMode, const AVSValue &, const char *Name, IScriptEnvironment *);
+
+    template <GradationProcesser &process>
+    static FrameProcesser &getFrameProcesser(const VideoInfo &vi, IScriptEnvironment *env);
 
     enum { iChild, iProcess, iCurveType, iPoints, iFile, iFileType, iPrecise };
 
@@ -103,9 +108,7 @@ PVideoFrame __stdcall GradationFilter::GetFrame(int n, IScriptEnvironment* env)
     auto &&src = child->GetFrame(n, env);
     auto &&dst = src->IsWritable() ? (const PVideoFrame &) src
                                    : (const PVideoFrame &) env->NewVideoFrameP(vi, &src);
-    Run( *grd, vi.width, vi.height,
-         (uint32_t *) src->GetReadPtr(), (uint32_t *) dst->GetWritePtr(),
-         src->GetPitch(), dst->GetPitch() );
+    processFrame(*grd, vi.width, vi.height, vi.pixel_type, src, dst);
     return dst;
 }
 
@@ -191,6 +194,32 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
     }
 }
 
+template <GradationProcesser &process>
+FrameProcesser &GradationFilter::getFrameProcesser(const VideoInfo &vi, IScriptEnvironment *env)
+{
+    if (!vi.IsRGB())
+        env->ThrowError("%s: Input clip must be RGB(A)", Name());
+    switch (vi.BitsPerComponent())
+    {
+        case 8:  return applyToFrame<process, 8>;
+        case 10: return applyToFrame<process, 10>;
+        case 12: return applyToFrame<process, 12>;
+        case 14: return applyToFrame<process, 14>;
+        case 16: return applyToFrame<process, 16>;
+        case 32: return applyToFrame<process, 32>;
+    }
+    env->ThrowError("%s: Unsupported pixel type", Name());
+    abort();
+}
+
+static inline void runGradationOld(const Gradation &grd, int width, int height, int, const PVideoFrame &src, const PVideoFrame &dst)
+// Pre: clip is RGB32.
+{
+    Run( grd, width, height,
+         (uint32_t *) src->GetReadPtr(), (uint32_t *) dst->GetWritePtr(),
+         src->GetPitch(), dst->GetPitch() );
+}
+
 AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironment *env)
 {
     bool precise = args[iPrecise].AsBool(false);
@@ -206,11 +235,6 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     if (args[iPoints].IsArray() && args[iFile].IsString())
         env->ThrowError("%s: Only one of 'points', 'file' can be provided at a time", Name());
 
-    auto &&child = args[iChild].AsClip();
-    auto &vi = child->GetVideoInfo();
-    if (!vi.IsRGB32())
-        env->ThrowError("%s: Input clip must be RGB32", Name());
-
     grd->process = parseEnum<ProcessingMode>(args[iProcess].AsString(), "process", processingModes, env);
     DrawMode drawMode = parseEnum<DrawMode>(args[iCurveType].AsString("spline"), "curve_type", drawModes, env);
     if (args[iPoints].IsArray())
@@ -224,7 +248,19 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
     PreCalcLut(*grd);
 
-    return new GradationFilter(child, grd);
+    auto &&child = args[iChild].AsClip();
+    auto &vi = child->GetVideoInfo();
+    if (precise)
+        switch (grd->process)
+        {
+            case PROCMODE_HSV: return new GradationFilter(child, grd, getFrameProcesser<processHSV>(vi, env));
+            default: env->ThrowError("%s: 'precise' not supported for processing mode '%s'", Name(), args[iProcess].AsString());
+        }
+
+    if (!vi.IsRGB32())
+        env->ThrowError("%s: Input clip must be RGB32", Name());
+
+    return new GradationFilter(child, grd, runGradationOld);
 }
 
 const AVS_Linkage *AVS_linkage = 0;
