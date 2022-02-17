@@ -4,13 +4,14 @@
 #include <type_traits>
 #include <avisynth.h>
 #include "gradation.h"
+#include "util.h"
 
 static const int planesRGB[4] {PLANAR_B, PLANAR_G, PLANAR_R, PLANAR_A};
 
 template<int bpc>
 struct PixelTraits
 {
-    using type =
+    using pixel_t =
         std::conditional_t<
             bpc == 8,
             uint8_t,
@@ -20,10 +21,8 @@ struct PixelTraits
                 float
         >   >;
 
-    enum
-    {
-        maxValue = (bpc == 32) ? 1 : (1 << bpc) - 1,
-    };
+    static constexpr pixel_t maxValue()
+        { return (bpc == 32) ? 1 : (1LL << bpc) - 1; }
 };
 
 
@@ -34,7 +33,7 @@ template <GradationProcesser &process, int bpc>
 static inline void applyToFrame(const Gradation &grd, int width, int height, int pixel_type, const PVideoFrame &src, const PVideoFrame &dst)
 // Pre: clip is RGB(A).
 {
-    using pixel_t = typename PixelTraits<bpc>::type;
+    using pixel_t = typename PixelTraits<bpc>::pixel_t;
     enum { iB, iG, iR, iA };
 
     bool hasAlpha = pixel_type & VideoInfo::CS_RGBA_TYPE;
@@ -64,12 +63,13 @@ static inline void applyToFrame(const Gradation &grd, int width, int height, int
     {
         for (int x = 0; x < packSize*width; x += packSize)
         {
-            constexpr double multiplier = 255.0/PixelTraits<bpc>::maxValue;
+            constexpr pixel_t maxValue = PixelTraits<bpc>::maxValue();
+            constexpr double multiplier = 255.0/maxValue;
             constexpr bool isInt = bpc < 32;
             RGB<double> in {
-                ((pixel_t *) srcp[iR])[x]*multiplier,
-                ((pixel_t *) srcp[iG])[x]*multiplier,
-                ((pixel_t *) srcp[iB])[x]*multiplier,
+                clamp<pixel_t>(((pixel_t *) srcp[iR])[x], 0, maxValue)*multiplier,
+                clamp<pixel_t>(((pixel_t *) srcp[iG])[x], 0, maxValue)*multiplier,
+                clamp<pixel_t>(((pixel_t *) srcp[iB])[x], 0, maxValue)*multiplier,
             };
             RGB<double> out = process(grd, in.r, in.g, in.b);
             ((pixel_t *) dstp[iR])[x] = pixel_t(out.r/multiplier + isInt*0.5);
