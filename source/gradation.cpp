@@ -33,8 +33,6 @@ static void PreCalcRgb2Lab(int *);
 static void PreCalcLab2Rgb(int *);
 
 template <class T>
-struct RGB { T r, g, b; };
-template <class T>
 struct HSV { T h, s, v; };
 
 static inline RGB<uint8_t> unpackRGB(uint32_t p);
@@ -44,8 +42,8 @@ static inline double interpolateCurveValue(const double y[256], double x);
 static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in);
 static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in);
 
-static HSV<double> rgb2hsv(RGB<double> in);
-static RGB<double> hsv2rgb(HSV<double> in);
+static HSV<double> rgb2hsv(double r, double g, double b);
+static RGB<double> hsv2rgb(double h, double s, double v);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -907,16 +905,16 @@ static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
 
 static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
 {
-    auto hsv = rgb2hsv({
+    auto hsv = rgb2hsv(
         double(in.r),
         double(in.g),
-        double(in.b),
-    });
-    auto rgb = hsv2rgb({
+        double(in.b)
+    );
+    auto rgb = hsv2rgb(
         interpolateCurveValue(grd.ovaluef(1), hsv.h),
         interpolateCurveValue(grd.ovaluef(2), hsv.s),
-        interpolateCurveValue(grd.ovaluef(3), hsv.v),
-    });
+        interpolateCurveValue(grd.ovaluef(3), hsv.v)
+    );
     return {
         uint8_t(rgb.r + 0.5),
         uint8_t(rgb.g + 0.5),
@@ -924,11 +922,22 @@ static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
     };
 }
 
-// https://stackoverflow.com/a/6930407
-static HSV<double> rgb2hsv(RGB<double> in)
+RGB<double> processHSV(const Gradation &grd, double r, double g, double b)
 {
-    double min = MIN(MIN(in.r, in.g), in.b);
-    double max = MAX(MAX(in.r, in.g), in.b);
+    auto hsv = rgb2hsv(r, g, b);
+    auto rgb = hsv2rgb(
+        interpolateCurveValue(grd.ovaluef(1), hsv.h),
+        interpolateCurveValue(grd.ovaluef(2), hsv.s),
+        interpolateCurveValue(grd.ovaluef(3), hsv.v)
+    );
+    return rgb;
+}
+
+// https://stackoverflow.com/a/6930407
+static HSV<double> rgb2hsv(double r, double g, double b)
+{
+    double min = MIN(MIN(r, g), b);
+    double max = MAX(MAX(r, g), b);
     double delta = max - min;
 
     HSV<double> out;
@@ -941,12 +950,12 @@ static HSV<double> rgb2hsv(RGB<double> in)
 
     if (delta == 0.0)
         out.h = 0;
-    else if (in.r == max)
-        out.h = (in.g - in.b)/delta;
-    else if (in.g == max)
-        out.h = 2.0 + (in.b - in.r)/delta;
+    else if (r == max)
+        out.h = (g - b)/delta;
+    else if (g == max)
+        out.h = 2.0 + (b - r)/delta;
     else
-        out.h = 4.0 + (in.r - in.g)/delta;
+        out.h = 4.0 + (r - g)/delta;
 
     out.h *= 42.5;
 
@@ -956,26 +965,26 @@ static HSV<double> rgb2hsv(RGB<double> in)
     return out;
 }
 
-static RGB<double> hsv2rgb(HSV<double> in)
+static RGB<double> hsv2rgb(double h, double s, double v)
 {
-    if (in.s == 0.0)
-        return {in.v, in.v, in.v};
+    if (s == 0.0)
+        return {v, v, v};
 
-    double hh = in.h < 255.0 ? in.h/42.5 : 0.0;
+    double hh = h < 255.0 ? h/42.5 : 0.0;
     int i = (int) hh;
     double ff = hh - i;
-    double s = in.s/255.0;
-    double p = in.v * (1.0 - s);
-    double q = in.v * (1.0 - (s * ff));
-    double t = in.v * (1.0 - (s * (1.0 - ff)));
+    s = s/255.0;
+    double p = v * (1.0 - s);
+    double q = v * (1.0 - (s * ff));
+    double t = v * (1.0 - (s * (1.0 - ff)));
 
     switch (i)
     {
-        case 0:     return {in.v, t, p};
-        case 1:     return {q, in.v, p};
-        case 2:     return {p, in.v, t};
-        case 3:     return {p, q, in.v};
-        case 4:     return {t, p, in.v};
-        default:    return {in.v, p, q};
+        case 0:     return {v, t, p};
+        case 1:     return {q, v, p};
+        case 2:     return {p, v, t};
+        case 3:     return {p, q, v};
+        case 4:     return {t, p, v};
+        default:    return {v, p, q};
     }
 }

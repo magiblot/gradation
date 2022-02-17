@@ -22,7 +22,7 @@ AviSynth+ 3.7.1 or newer is required.
 
 * *clip* **clip** = *(required)*
 
-    Input clip. It must be RGB32.
+    Input clip. It must be RGB32 unless **precise=true**, in which case all RGB/A formats are supported.
 
 * *string* **process** = *(required)*
 
@@ -80,7 +80,7 @@ AviSynth+ 3.7.1 or newer is required.
 
     Use floating-point precision (slower) instead of integer math.
 
-    This is currently only implemented for **process="hsv"**.
+    This is currently only supported for **process="hsv"**.
 
 # Build
 
