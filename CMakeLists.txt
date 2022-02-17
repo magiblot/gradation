@@ -4,6 +4,7 @@ project(gradation)
 
 function(common_compile_settings t)
     target_compile_features(${t} PUBLIC cxx_std_14)
+    set_target_properties(${t} PROPERTIES CXX_VISIBILITY_PRESET "hidden")
 
     if (WIN32)
         target_compile_definitions(${t} PRIVATE

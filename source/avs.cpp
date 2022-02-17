@@ -5,7 +5,10 @@
 #include <utility>
 #include <stdlib.h>
 
-#ifndef _MSC_VER
+#ifdef _MSC_VER
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT __attribute__((visibility("default")))
 
 #include <strings.h>
 
@@ -265,7 +268,7 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
 const AVS_Linkage *AVS_linkage = 0;
 
-extern "C" __declspec(dllexport) const char* __cdecl AvisynthPluginInit3(IScriptEnvironment* env, AVS_Linkage* vectors)
+extern "C" EXPORT const char* __cdecl AvisynthPluginInit3(IScriptEnvironment* env, AVS_Linkage* vectors)
 {
     AVS_linkage = vectors;
     GradationFilter::Register(env);
