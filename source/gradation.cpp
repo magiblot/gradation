@@ -546,7 +546,7 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
                     grd.drwpoint[curpos-1][cordcount][1]=cv;}
                 if (i==(cordpos+2)) {
                     grd.drwpoint[curpos-1][cordcount][0]=cv;
-                    if (cordcount<15) {cordcount++;}
+                    if (cordcount<(maxPoints-1)) {cordcount++;}
                     cordpos=cordpos+4;}
             }
             fclose (pFile);
