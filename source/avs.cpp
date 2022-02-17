@@ -5,20 +5,6 @@
 #include <utility>
 #include <stdlib.h>
 
-#ifdef _MSC_VER
-#define EXPORT __declspec(dllexport)
-#else
-#define EXPORT __attribute__((visibility("default")))
-
-#include <strings.h>
-
-static int stricmp(const char *a, const char *b) noexcept
-{
-    return strcasecmp(a, b);
-}
-
-#endif // _MSC_VER
-
 static constexpr std::pair<const char *, int> processingModes[] =
 {
     {"rgb", PROCMODE_RGB},
