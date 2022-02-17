@@ -176,8 +176,11 @@ void __declspec(dllexport) __cdecl VirtualdubFilterModuleDeinit(FilterModule *fm
 
 ///////////////////////////////////////////////////////////////////////////
 
+enum { pointSelectionRadius = 10 };
+
 static void UpdateItemVisibility(MyFilterData *mfd, HWND hdlg);
 static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode);
+static bool SelectsPoint(const uint8_t (&p)[2], const uint8_t (&s)[2]);
 static void GrdDrawGradTable(HWND hWnd, const uint8_t table[256], int laboff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap);
 static void GrdDrawBorder(HWND hWnd, HWND hWnd2, MyFilterData *mfd);
 
@@ -566,7 +569,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 mfd->psel=false;
                 stp=false;
                 for (i=0; i<(mfd->poic[mfd->channel_mode]);i++){  // select point
-                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<31 && stp==false){
+                    if (SelectsPoint(mfd->drwpoint[mfd->channel_mode][i], {ax, ay}) && stp==false){
                         if (i<mfd->poic[mfd->channel_mode]-1){
                             if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
                             mfd->cp=i;
@@ -590,7 +593,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                         for (i=1; i<(mfd->poic[mfd->channel_mode]);i++){
                             if (mfd->drwpoint[mfd->channel_mode][i][0]>ax && ptp==false && mfd->drwpoint[mfd->channel_mode][0][0]<ax){
                                 ptp=true;
-                                if (ax>mfd->drwpoint[mfd->channel_mode][i-1][0]+11 && ax<mfd->drwpoint[mfd->channel_mode][i][0]-11){
+                                if (mfd->drwpoint[mfd->channel_mode][i-1][0]<ax && !SelectsPoint(mfd->drwpoint[mfd->channel_mode][i-1], {ax, ay}) && !SelectsPoint(mfd->drwpoint[mfd->channel_mode][i], {ax, ay})){
                                 stp=true;
                                 for (j=mfd->poic[mfd->channel_mode];j>i;j--){
                                     mfd->drwpoint[mfd->channel_mode][j][0]=mfd->drwpoint[mfd->channel_mode][j-1][0];
@@ -630,7 +633,7 @@ static DLGPROC_RET CALLBACK ConfigDlgProc(HWND hdlg, UINT msg, WPARAM wParam, LP
                 stp=false;
                 ptp=false;
                 for (i=1; i<(mfd->poic[mfd->channel_mode])-1;i++){
-                    if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)<11 && abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<11 && stp==false){
+                    if (SelectsPoint(mfd->drwpoint[mfd->channel_mode][i], {ax, ay}) && stp==false){
                         if (abs(mfd->drwpoint[mfd->channel_mode][i][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i][1]-ay)<abs(mfd->drwpoint[mfd->channel_mode][i+1][0]-ax)+abs(mfd->drwpoint[mfd->channel_mode][i+1][1]-ay)){
                             mfd->cp=i;
                             for (j=i; j<=(mfd->poic[mfd->channel_mode]-1);j++){
@@ -1425,6 +1428,14 @@ static void EnableDrawMode(MyFilterData *mfd, HWND hdlg, DrawMode newMode)
         UpdateItemVisibility(mfd, hdlg);
         mfd->ifp->RedoFrame();
     }
+}
+
+static bool SelectsPoint(const uint8_t (&p)[2], const uint8_t (&s)[2])
+{
+    int x = p[0] - s[0];
+    int y = p[1] - s[1];
+    int d = pointSelectionRadius;
+    return x*x + y*y <= d*d;
 }
 
 static void GrdDrawGradTable(HWND hWnd, const uint8_t table[256], int loff, DrawMode dmode, uint8_t dp[maxPoints][2], int pc, int ap)  // draw the curve
