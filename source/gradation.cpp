@@ -826,7 +826,7 @@ static inline double interpolateCurveValue(const double y[256], double x)
     uint8_t x1 = uint8_t(x);
     uint8_t x2 = x1 + 1; // Native wrapping: 255 + 1 -> 0.
     double ff = x - x1;
-    return (1.0 - ff)*y[x1] + ff*y[x2];
+    return y[x1] + ff*(y[x2] - y[x1]);
 }
 
 static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
