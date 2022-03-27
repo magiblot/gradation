@@ -220,7 +220,7 @@ class AVSMap;
 
 struct AVS_Linkage {
 
-  int Size;
+  unsigned int Size;
 
 /**********************************************************************/
 
