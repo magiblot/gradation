@@ -80,7 +80,7 @@ AviSynth+ 3.7.1 or newer is required.
 
     Use floating-point precision (slower) instead of integer math.
 
-    This is currently only supported for **process="hsv"**.
+    This is currently only supported for the `"yuv"` and `"hsv"` processing modes.
 
 # Build
 

@@ -34,6 +34,8 @@ static void PreCalcLab2Rgb(int *);
 
 template <class T>
 struct HSV { T h, s, v; };
+template <class T>
+struct YUV { T y, u, v; };
 
 static inline RGB<uint8_t> unpackRGB(uint32_t p);
 static inline uint32_t packRGB(RGB<uint8_t> p);
@@ -41,9 +43,13 @@ static inline double interpolateCurveValue(const double y[256], double x);
 
 static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in);
 static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in);
+static RGB<uint8_t> processYUVInt(const Gradation &grd, RGB<uint8_t> in);
+static RGB<uint8_t> processYUVDouble(const Gradation &grd, RGB<uint8_t> in);
 
 static HSV<double> rgb2hsv(double r, double g, double b);
 static RGB<double> hsv2rgb(double h, double s, double v);
+static YUV<double> rgb2yuv(double r, double g, double b);
+static RGB<double> yuv2rgb(double y, double u, double v);
 
 ///////////////////////////////////////////////////////////////////////////
 
@@ -179,26 +185,11 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                r = ((old_pixel & 0xFF0000)>>16);
-                g = ((old_pixel & 0x00FF00)>>8);
-                b = (old_pixel & 0x0000FF);
-                //RGB to YUV (x=Y y=U z=V)
-                x = (32768 + 19595 * r + 38470 * g + 7471 * b)>>16; //correct rounding +32768
-                y = (8421375 - 11058 * r - 21710 * g + 32768 * b)>>16; //correct rounding +32768
-                z = (8421375 + 32768 * r - 27439 * g - 5329 * b)>>16; //correct rounding +32768
-                // Applying the curves
-                x = (grd.ovalue(1, x))<<16;
-                y = (grd.ovalue(2, y))-128;
-                z = (grd.ovalue(3, z))-128;
-                // YUV to RGB
-                rr = (32768 + x + 91881 * z); //correct rounding +32768
-                if (rr<0) {r=0;} else if (rr>16711680) {r=16711680;} else {r = (rr & 0xFF0000);}
-                gg = (32768 + x - 22553 * y - 46802 * z); //correct rounding +32768
-                if (gg<0) {g=0;} else if (gg>16711680) {g=65280;} else {g = (gg & 0xFF0000)>>8;}
-                bb = (32768 + x + 116130 * y); //correct rounding +32768
-                if (bb<0) {b=0;} else if (bb>16711680) {b=255;} else {b = bb>>16;}
-                new_pixel = (r+g+b);
-                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
+                auto result =
+                    grd.precise ? processYUVDouble(grd, unpackRGB(old_pixel))
+                                : processYUVInt(grd, unpackRGB(old_pixel));
+                new_pixel = packRGB(result) | (old_pixel & 0xFF000000U);
+                *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -905,15 +896,11 @@ static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
 
 static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
 {
-    auto hsv = rgb2hsv(
+    auto rgb = processHSV(
+        grd,
         double(in.r),
         double(in.g),
         double(in.b)
-    );
-    auto rgb = hsv2rgb(
-        interpolateCurveValue(grd.ovaluef(1), hsv.h),
-        interpolateCurveValue(grd.ovaluef(2), hsv.s),
-        interpolateCurveValue(grd.ovaluef(3), hsv.v)
     );
     return {
         uint8_t(rgb.r + 0.5),
@@ -987,4 +974,91 @@ static RGB<double> hsv2rgb(double h, double s, double v)
         case 4:     return {t, p, v};
         default:    return {v, p, q};
     }
+}
+
+static RGB<uint8_t> processYUVInt(const Gradation &grd, RGB<uint8_t> in)
+{
+    uint8_t r = in.r,
+            g = in.g,
+            b = in.b;
+    //RGB to YUV (x=Y y=U z=V)
+    int x, y, z;
+    x = (32768 + 19595 * r + 38470 * g + 7471 * b)>>16; //correct rounding +32768
+    y = (8421375 - 11058 * r - 21710 * g + 32768 * b)>>16; //correct rounding +32768
+    z = (8421375 + 32768 * r - 27439 * g - 5329 * b)>>16; //correct rounding +32768
+    // Applying the curves
+    x = (grd.ovalue(1, x))<<16;
+    y = (grd.ovalue(2, y))-128;
+    z = (grd.ovalue(3, z))-128;
+    // YUV to RGB
+    int rr = (32768 + x + 91881 * z)>>16; //correct rounding +32768
+    int gg = (32768 + x - 22553 * y - 46802 * z)>>16; //correct rounding +32768
+    int bb = (32768 + x + 116130 * y)>>16; //correct rounding +32768
+    return {
+        (uint8_t) MIN(MAX(rr, 0), 255),
+        (uint8_t) MIN(MAX(gg, 0), 255),
+        (uint8_t) MIN(MAX(bb, 0), 255),
+    };
+}
+
+static RGB<uint8_t> processYUVDouble(const Gradation &grd, RGB<uint8_t> in)
+{
+    auto rgb = processYUV(
+        grd,
+        double(in.r),
+        double(in.g),
+        double(in.b)
+    );
+    return {
+        uint8_t(rgb.r + 0.5),
+        uint8_t(rgb.g + 0.5),
+        uint8_t(rgb.b + 0.5),
+    };
+}
+
+RGB<double> processYUV(const Gradation &grd, double r, double g, double b)
+{
+    auto yuv = rgb2yuv(r, g, b);
+    auto rgb = yuv2rgb(
+        interpolateCurveValue(grd.ovaluef(1), yuv.y),
+        interpolateCurveValue(grd.ovaluef(2), yuv.u),
+        interpolateCurveValue(grd.ovaluef(3), yuv.v)
+    );
+    return rgb;
+}
+
+namespace BT601
+{
+constexpr auto mR = 0.299;
+constexpr auto mG = 0.587;
+constexpr auto mB = 0.114;
+constexpr auto dCB = 1.772;
+constexpr auto dCR = 1.402;
+}
+
+static YUV<double> rgb2yuv(double r, double g, double b)
+{
+    using namespace BT601;
+    double y = mR*r + mG*g + mB*b;
+    double u = 128 + (b - y)/dCB;
+    double v = 128 + (r - y)/dCR;
+    return {
+        MIN(MAX(y, 0.0), 255.0),
+        MIN(MAX(u, 0.0), 255.0),
+        MIN(MAX(v, 0.0), 255.0),
+    };
+}
+
+static RGB<double> yuv2rgb(double y, double u, double v)
+{
+    using namespace BT601;
+    u -= 128; v -= 128;
+    double r = v*dCR + y;
+    double g = y + -(mB*dCB/mG)*u -(mR*dCR/mG)*v;
+    double b = u*dCB + y;
+    return {
+        MIN(MAX(r, 0.0), 255.0),
+        MIN(MAX(g, 0.0), 255.0),
+        MIN(MAX(b, 0.0), 255.0),
+    };
 }
