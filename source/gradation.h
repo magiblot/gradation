@@ -219,5 +219,6 @@ template <class T>
 struct RGB { T r, g, b; };
 
 RGB<double> processHSV(const Gradation &grd, double r, double g, double b);
+RGB<double> processYUV(const Gradation &grd, double r, double g, double b);
 
 #endif // GRADATION_MAIN_H

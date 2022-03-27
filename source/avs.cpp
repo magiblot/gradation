@@ -242,6 +242,7 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     if (precise)
         switch (grd->process)
         {
+            case PROCMODE_YUV: return new GradationFilter(child, grd, getFrameProcesser<processYUV>(vi, env));
             case PROCMODE_HSV: return new GradationFilter(child, grd, getFrameProcesser<processHSV>(vi, env));
             default: env->ThrowError("%s: 'precise' not supported for processing mode '%s'", Name(), args[iProcess].AsString());
         }
