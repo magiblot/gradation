@@ -255,7 +255,7 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
 
 const AVS_Linkage *AVS_linkage = 0;
 
-extern "C" EXPORT const char* __cdecl AvisynthPluginInit3(IScriptEnvironment* env, AVS_Linkage* vectors)
+extern "C" EXPORT const char* __stdcall AvisynthPluginInit3(IScriptEnvironment* env, AVS_Linkage* vectors)
 {
     AVS_linkage = vectors;
     GradationFilter::Register(env);
