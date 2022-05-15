@@ -301,17 +301,17 @@ void Init(Gradation &grd, bool precise) {
     sprintf(grd.gamma, "%.3lf", 1.000);
     for (i=0; i<256; i++) {
         grd.ovalue(0, i, i);
-        grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
-        grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
-        grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
-        grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
-        grd.bvalue[i]=(grd.ovalue(0, i)-i);
         grd.ovalue(1, i, i);
-        grd.rvalue[1][i]=(grd.ovalue(1, i)<<16);
         grd.ovalue(2, i, i);
-        grd.gvalue[1][i]=(grd.ovalue(2, i)<<8);
         grd.ovalue(3, i, i);
         grd.ovalue(4, i, i);
+        grd.rvalue[0][i] = i << 16;
+        grd.rvalue[1][i] = i << 16;
+        grd.rvalue[2][i] = 0 << 16;
+        grd.gvalue[0][i] = i << 8;
+        grd.gvalue[1][i] = i << 8;
+        grd.gvalue[2][i] = 0 << 8;
+        grd.bvalue[i] = 0;
     }
 }
 
@@ -415,16 +415,8 @@ void CalcCurve(Gradation &grd, Channel channel)
             grd.ovalue(channel, c2, grd.drwpoint[channel][grd.poic[channel]-1][1]);
         }
     }
-    switch (channel) { //for faster RGB modes
-        case CHANNEL_RGB:
-        case CHANNEL_RED:
-        case CHANNEL_GREEN:
-            for (i=0;i<256;i++) {
-                InitRGBValues(grd, CHANNEL_RGB, i);
-            }
-            break;
-        default:
-            break;
+    for (i = 0; i < 256; ++i) {
+        InitRGBValues(grd, channel, i);
     }
 }
 
@@ -705,11 +697,11 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
         if (lSize > 768){
             for(i=0; i < 256; i++) {
                 grd.ovalue(0, i, stor[i]);
-                grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
-                grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
-                grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
-                grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
-                grd.bvalue[i]=grd.ovalue(0, i)-i;
+                grd.rvalue[0][i] = stor[i] << 16;
+                grd.rvalue[2][i] = (stor[i] - i) << 16;
+                grd.gvalue[0][i] = stor[i] << 8;
+                grd.gvalue[2][i] = (stor[i] - i) << 8;
+                grd.bvalue[i] = stor[i] - i;
             }
             for(i=256; i < 512; i++) {
                 grd.ovalue(1, i-256, stor[i]);
@@ -736,11 +728,11 @@ bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawM
         if (lSize < 257 && lSize > 0) {
             for(i=0; i < 256; i++) {
                 grd.ovalue(0, i, stor[i]);
-                grd.rvalue[0][i]=(grd.ovalue(0, i)<<16);
-                grd.rvalue[2][i]=(grd.ovalue(0, i)-i)<<16;
-                grd.gvalue[0][i]=(grd.ovalue(0, i)<<8);
-                grd.gvalue[2][i]=(grd.ovalue(0, i)-i)<<8;
-                grd.bvalue[i]=grd.ovalue(0, i)-i;
+                grd.rvalue[0][i] = stor[i] << 16;
+                grd.rvalue[2][i] = (stor[i] - i) << 16;
+                grd.gvalue[0][i] = stor[i] << 8;
+                grd.gvalue[2][i] = (stor[i] - i) << 8;
+                grd.bvalue[i] = stor[i] - i;
             }
         }
         for (i=0;i<5;i++) {
