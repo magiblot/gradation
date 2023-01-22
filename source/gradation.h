@@ -2,6 +2,7 @@
 #define GRADATION_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 extern int rgblab[]; //LUT Lab
 extern int labrgb[]; //LUT Lab
@@ -155,13 +156,14 @@ struct Gradation {
     }
 };
 
-void Init(Gradation &grd, bool precise=false);
+void Init(Gradation &grd, bool precise = false);
 void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch);
 
 void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd, Channel channel);
-bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode=DRAWMODE_SPLINE);
+bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode = DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
+void ImportPoints(Gradation &grd, DrawMode drawMode, Channel channel, uint8_t *points, size_t count);
 
 inline void InitRGBValues(Gradation &grd, Channel channel, int x) {
     uint8_t val = grd.ovalue(channel, x);
@@ -217,6 +219,34 @@ inline int GetFirstChannel(Space space) {
 
 template <class T>
 struct RGB { T r, g, b; };
+
+inline RGB<uint8_t> unpackRGB(uint32_t p)
+{
+    return {
+        uint8_t((p & 0xFF0000) >> 16),
+        uint8_t((p & 0x00FF00) >> 8),
+        uint8_t(p & 0x0000FF),
+    };
+}
+
+inline uint32_t packRGB(RGB<uint8_t> p)
+{
+    return ((p.r << 16) + (p.g << 8) + p.b);
+}
+
+template <RGB<double> (&process)(const Gradation &, double, double, double)>
+inline RGB<uint8_t> processIntAsDouble(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+{
+    auto out = process(grd, double(r), double(g), double(b));
+    return {
+        uint8_t(out.r + 0.5),
+        uint8_t(out.g + 0.5),
+        uint8_t(out.b + 0.5),
+    };
+}
+
+RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 
 RGB<double> processHSV(const Gradation &grd, double r, double g, double b);
 RGB<double> processYUV(const Gradation &grd, double r, double g, double b);

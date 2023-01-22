@@ -156,9 +156,9 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
             env->ThrowError("%s: In list %d of '%s': Not an array", Name(), l, argName);
         if (maxPoints < points.ArraySize() )
             env->ThrowError("%s: In list %d of '%s': Can't have more than %d points", Name(), l, argName, maxPoints);
-        Channel ch = Channel(l + firstChannel);
-        int16_t pts[256] {0};
-        int count = 0;
+        uint8_t outPoints[2*maxPoints];
+        int16_t pos[256] {0};
+        size_t count = 0;
         for (int p = 0; p < points.ArraySize(); ++p, ++count)
         {
             auto &point = points[p];
@@ -168,18 +168,14 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
             int y = point[1].AsInt();
             if (x < 0 || 255 < x || y < 0 || 255 < y)
                 env->ThrowError("%s: In list %d of '%s': Out-of-range point (%d, %d)", Name(), l, argName, x, y);
-            if (pts[x])
-                env->ThrowError("%s: In list %d of '%s': Points (%d, %d) and (%d, %d) overlap", Name(), l, argName, x, pts[x] - 1, x, y);
-            pts[x] = y + 1;
-            grd.drwpoint[ch][count][0] = (uint8_t) x;
-            grd.drwpoint[ch][count][1] = (uint8_t) y;
+            if (pos[x])
+                env->ThrowError("%s: In list %d of '%s': Points (%d, %d) and (%d, %d) overlap", Name(), l, argName, x, pos[x] - 1, x, y);
+            pos[x] = y + 1;
+            outPoints[2*count    ] = (uint8_t) x;
+            outPoints[2*count + 1] = (uint8_t) y;
         }
-        if (count != 0)
-        {
-            grd.drwmode[ch] = drawMode;
-            grd.poic[ch] = count;
-            CalcCurve(grd, ch);
-        }
+        Channel ch = Channel(l + firstChannel);
+        ImportPoints(grd, drawMode, ch, outPoints, count);
     }
 }
 
@@ -201,7 +197,7 @@ FrameProcesser &GradationFilter::getFrameProcesser(const VideoInfo &vi, IScriptE
     abort();
 }
 
-static inline void runGradationOld(const Gradation &grd, int width, int height, int, const PVideoFrame &src, const PVideoFrame &dst)
+static void runGradationOld(const Gradation &grd, int width, int height, int, const PVideoFrame &src, const PVideoFrame &dst)
 // Pre: clip is RGB32.
 {
     Run( grd, width, height,

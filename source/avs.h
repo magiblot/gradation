@@ -30,7 +30,7 @@ using FrameProcesser = void(const Gradation &grd, int width, int height, int pix
 using GradationProcesser = RGB<double>(const Gradation &grd, double r, double g, double b);
 
 template <GradationProcesser &process, int bpc>
-static inline void applyToFrame(const Gradation &grd, int width, int height, int pixel_type, const PVideoFrame &src, const PVideoFrame &dst)
+inline void applyToFrame(const Gradation &grd, int width, int height, int pixel_type, const PVideoFrame &src, const PVideoFrame &dst)
 // Pre: clip is RGB(A).
 {
     using pixel_t = typename PixelTraits<bpc>::pixel_t;

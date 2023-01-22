@@ -37,14 +37,7 @@ struct HSV { T h, s, v; };
 template <class T>
 struct YUV { T y, u, v; };
 
-static inline RGB<uint8_t> unpackRGB(uint32_t p);
-static inline uint32_t packRGB(RGB<uint8_t> p);
 static inline double interpolateCurveValue(const double y[256], double x);
-
-static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in);
-static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in);
-static RGB<uint8_t> processYUVInt(const Gradation &grd, RGB<uint8_t> in);
-static RGB<uint8_t> processYUVDouble(const Gradation &grd, RGB<uint8_t> in);
 
 static HSV<double> rgb2hsv(double r, double g, double b);
 static RGB<double> hsv2rgb(double h, double s, double v);
@@ -185,10 +178,11 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                auto result =
-                    grd.precise ? processYUVDouble(grd, unpackRGB(old_pixel))
-                                : processYUVInt(grd, unpackRGB(old_pixel));
-                new_pixel = packRGB(result) | (old_pixel & 0xFF000000U);
+                auto in = unpackRGB(old_pixel);
+                auto out =
+                    grd.precise ? processIntAsDouble<processYUV>(grd, in.r, in.g, in.b)
+                                : processYUVInt(grd, in.r, in.g, in.b);
+                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
                 *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -250,10 +244,11 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                auto result =
-                    grd.precise ? processHSVDouble(grd, unpackRGB(old_pixel))
-                                : processHSVInt(grd, unpackRGB(old_pixel));
-                new_pixel = packRGB(result) | (old_pixel & 0xFF000000U);
+                auto in = unpackRGB(old_pixel);
+                auto out =
+                    grd.precise ? processIntAsDouble<processHSV>(grd, in.r, in.g, in.b)
+                                : processHSVInt(grd, in.r, in.g, in.b);
+                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
                 *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
@@ -789,18 +784,19 @@ void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
     fclose(pFile);
 }
 
-static inline RGB<uint8_t> unpackRGB(uint32_t p)
+void ImportPoints(Gradation &grd, DrawMode drawMode, Channel channel, uint8_t *points, size_t count)
 {
-    return {
-        uint8_t((p & 0xFF0000) >> 16),
-        uint8_t((p & 0x00FF00) >> 8),
-        uint8_t(p & 0x0000FF),
-    };
-}
-
-static inline uint32_t packRGB(RGB<uint8_t> p)
-{
-    return ((p.r << 16) + (p.g << 8) + p.b);
+    if (count != 0)
+    {
+        for (size_t i = 0; i < MIN(count, maxPoints); ++i)
+        {
+            grd.drwpoint[channel][i][0] = points[2*i];
+            grd.drwpoint[channel][i][1] = points[2*i + 1];
+        }
+        grd.drwmode[channel] = drawMode;
+        grd.poic[channel] = count;
+        CalcCurve(grd, channel);
+    }
 }
 
 static inline double interpolateCurveValue(const double y[256], double x)
@@ -812,11 +808,8 @@ static inline double interpolateCurveValue(const double y[256], double x)
     return y[x1] + ff*(y[x2] - y[x1]);
 }
 
-static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
+RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
-    uint8_t r = in.r,
-            g = in.g,
-            b = in.b;
     // RGB to HSV
     uint8_t h, s, v;
     uint8_t cmin = MIN(MIN(r, g), b);
@@ -886,21 +879,6 @@ static RGB<uint8_t> processHSVInt(const Gradation &grd, RGB<uint8_t> in)
     return {r, g, b};
 }
 
-static RGB<uint8_t> processHSVDouble(const Gradation &grd, RGB<uint8_t> in)
-{
-    auto rgb = processHSV(
-        grd,
-        double(in.r),
-        double(in.g),
-        double(in.b)
-    );
-    return {
-        uint8_t(rgb.r + 0.5),
-        uint8_t(rgb.g + 0.5),
-        uint8_t(rgb.b + 0.5),
-    };
-}
-
 RGB<double> processHSV(const Gradation &grd, double r, double g, double b)
 {
     auto hsv = rgb2hsv(r, g, b);
@@ -968,11 +946,8 @@ static RGB<double> hsv2rgb(double h, double s, double v)
     }
 }
 
-static RGB<uint8_t> processYUVInt(const Gradation &grd, RGB<uint8_t> in)
+RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
-    uint8_t r = in.r,
-            g = in.g,
-            b = in.b;
     //RGB to YUV (x=Y y=U z=V)
     int x, y, z;
     x = (32768 + 19595 * r + 38470 * g + 7471 * b)>>16; //correct rounding +32768
@@ -990,21 +965,6 @@ static RGB<uint8_t> processYUVInt(const Gradation &grd, RGB<uint8_t> in)
         (uint8_t) MIN(MAX(rr, 0), 255),
         (uint8_t) MIN(MAX(gg, 0), 255),
         (uint8_t) MIN(MAX(bb, 0), 255),
-    };
-}
-
-static RGB<uint8_t> processYUVDouble(const Gradation &grd, RGB<uint8_t> in)
-{
-    auto rgb = processYUV(
-        grd,
-        double(in.r),
-        double(in.g),
-        double(in.b)
-    );
-    return {
-        uint8_t(rgb.r + 0.5),
-        uint8_t(rgb.g + 0.5),
-        uint8_t(rgb.b + 0.5),
     };
 }
 
