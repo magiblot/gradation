@@ -91,8 +91,12 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                new_pixel = grd.rvalue[0][(old_pixel & 0xFF0000)>>16] + grd.gvalue[0][(old_pixel & 0x00FF00)>>8] + grd.ovalue(0, old_pixel & 0x0000FF);
-                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
+                auto in = unpackRGB(old_pixel);
+                auto out =
+                    grd.precise ? processIntAsDouble<processRGB>(grd, in.r, in.g, in.b)
+                                : processRGBInt(grd, in.r, in.g, in.b);
+                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
+                *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -784,14 +788,14 @@ void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type)
     fclose(pFile);
 }
 
-void ImportPoints(Gradation &grd, DrawMode drawMode, Channel channel, uint8_t *points, size_t count)
+void ImportPoints(Gradation &grd, Channel channel, const uint8_t points[][2], size_t count, DrawMode drawMode)
 {
     if (count != 0)
     {
         for (size_t i = 0; i < MIN(count, maxPoints); ++i)
         {
-            grd.drwpoint[channel][i][0] = points[2*i];
-            grd.drwpoint[channel][i][1] = points[2*i + 1];
+            grd.drwpoint[channel][i][0] = points[i][0];
+            grd.drwpoint[channel][i][1] = points[i][1];
         }
         grd.drwmode[channel] = drawMode;
         grd.poic[channel] = count;
@@ -806,6 +810,24 @@ static inline double interpolateCurveValue(const double y[256], double x)
     uint8_t x2 = x1 + 1; // Native wrapping: 255 + 1 -> 0.
     double ff = x - x1;
     return y[x1] + ff*(y[x2] - y[x1]);
+}
+
+RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+{
+    return unpackRGB(
+        grd.rvalue[0][r] +
+        grd.gvalue[0][g] +
+        grd.ovalue(0, b)
+    );
+}
+
+RGB<double> processRGB(const Gradation &grd, double r, double g, double b)
+{
+    return {
+        interpolateCurveValue(grd.ovaluef(0), r),
+        interpolateCurveValue(grd.ovaluef(0), g),
+        interpolateCurveValue(grd.ovaluef(0), b),
+    };
 }
 
 RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)

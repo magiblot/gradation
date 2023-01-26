@@ -156,7 +156,7 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
             env->ThrowError("%s: In list %d of '%s': Not an array", Name(), l, argName);
         if (maxPoints < points.ArraySize() )
             env->ThrowError("%s: In list %d of '%s': Can't have more than %d points", Name(), l, argName, maxPoints);
-        uint8_t outPoints[2*maxPoints];
+        uint8_t outPoints[maxPoints][2];
         int16_t pos[256] {0};
         size_t count = 0;
         for (int p = 0; p < points.ArraySize(); ++p, ++count)
@@ -171,11 +171,11 @@ void GradationFilter::parsePoints(Gradation &grd, DrawMode drawMode, const AVSVa
             if (pos[x])
                 env->ThrowError("%s: In list %d of '%s': Points (%d, %d) and (%d, %d) overlap", Name(), l, argName, x, pos[x] - 1, x, y);
             pos[x] = y + 1;
-            outPoints[2*count    ] = (uint8_t) x;
-            outPoints[2*count + 1] = (uint8_t) y;
+            outPoints[count][0] = (uint8_t) x;
+            outPoints[count][1] = (uint8_t) y;
         }
         Channel ch = Channel(l + firstChannel);
-        ImportPoints(grd, drawMode, ch, outPoints, count);
+        ImportPoints(grd, ch, outPoints, count, drawMode);
     }
 }
 
@@ -238,6 +238,7 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     if (precise)
         switch (grd->process)
         {
+            case PROCMODE_RGB: return new GradationFilter(child, grd, getFrameProcesser<processRGB>(vi, env));
             case PROCMODE_YUV: return new GradationFilter(child, grd, getFrameProcesser<processYUV>(vi, env));
             case PROCMODE_HSV: return new GradationFilter(child, grd, getFrameProcesser<processHSV>(vi, env));
             default: env->ThrowError("%s: 'precise' not supported for processing mode '%s'", Name(), args[iProcess].AsString());

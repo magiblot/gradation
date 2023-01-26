@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
+option(GRADATION_BUILD_TESTS "Build and run tests" OFF)
+
 project(gradation)
 
 function(common_compile_settings t)
@@ -57,3 +59,31 @@ target_include_directories(gradation-avs PRIVATE
 )
 
 common_compile_settings(gradation-avs)
+
+# Target 'tests'
+
+if (GRADATION_BUILD_TESTS)
+    file(GLOB_RECURSE TEST_SRC "${CMAKE_CURRENT_LIST_DIR}/test/*.cpp")
+    add_executable(gradation-test
+        source/gradation.cpp
+        ${TEST_SRC}
+    )
+    target_include_directories(gradation-test PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/source"
+    )
+    find_library(GTEST gtest REQUIRED)
+    find_library(GTEST_MAIN gtest_main REQUIRED)
+    target_link_libraries(gradation-test PRIVATE
+        ${GTEST}
+        ${GTEST_MAIN}
+    )
+    add_custom_command(
+        OUTPUT gradation-test-passed
+        COMMAND gradation-test
+        COMMAND ${CMAKE_COMMAND} -E touch gradation-test-passed
+        DEPENDS gradation-test
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    add_custom_target(gradation-run-test ALL DEPENDS gradation-test-passed)
+    common_compile_settings(gradation-test)
+endif()

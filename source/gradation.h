@@ -163,7 +163,7 @@ void PreCalcLut(Gradation &grd);
 void CalcCurve(Gradation &grd, Channel channel);
 bool ImportCurve(Gradation &grd, const char *filename, CurveFileType type, DrawMode defDrawMode = DRAWMODE_SPLINE);
 void ExportCurve(const Gradation &grd, const char *filename, CurveFileType type);
-void ImportPoints(Gradation &grd, DrawMode drawMode, Channel channel, uint8_t *points, size_t count);
+void ImportPoints(Gradation &grd, Channel channel, const uint8_t points[][2], size_t count, DrawMode drawMode);
 
 inline void InitRGBValues(Gradation &grd, Channel channel, int x) {
     uint8_t val = grd.ovalue(channel, x);
@@ -245,9 +245,11 @@ inline RGB<uint8_t> processIntAsDouble(const Gradation &grd, uint8_t r, uint8_t 
     };
 }
 
+RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 
+RGB<double> processRGB(const Gradation &grd, double r, double g, double b);
 RGB<double> processHSV(const Gradation &grd, double r, double g, double b);
 RGB<double> processYUV(const Gradation &grd, double r, double g, double b);
 
