@@ -197,17 +197,12 @@ FrameProcesser &GradationFilter::getFrameProcesser(const VideoInfo &vi, IScriptE
     abort();
 }
 
-#ifdef _MSC_VER
 // Work around MSVC bug (https://developercommunity.visualstudio.com/t/C-compiler-bug:-unable-to-use-static-m/10262063).
 template <class procMode>
-static RGB<double> processDouble(const Gradation &grd, double r, double g, double b)
+static inline RGB<double> processDouble(const Gradation &grd, double r, double g, double b)
 {
     return procMode::processDouble(grd, r, g, b);
 }
-#else
-template <class procMode>
-constexpr auto &processDouble = procMode::processDouble;
-#endif
 
 static void runGradationOld(const Gradation &grd, int width, int height, int, const PVideoFrame &src, const PVideoFrame &dst)
 // Pre: clip is RGB32.
