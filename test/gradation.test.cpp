@@ -56,7 +56,7 @@ TEST(Gradation, ShouldProcessRGB)
         for (auto &curve : curves)
             ImportPoints(grd, curve.channel, curve.points, curve.count, curve.drawMode);
         auto &in = testCase.input;
-        auto actual = processRGB(grd, in.r, in.g, in.b);
+        auto actual = procModeRgb::processDouble(grd, in.r, in.g, in.b);
         expectMatchingResult(actual, testCase);
     }
 }
@@ -83,7 +83,7 @@ TEST(Gradation, ShouldProcessRGBInt)
         for (auto &curve : curves)
             ImportPoints(grd, curve.channel, curve.points, curve.count, curve.drawMode);
         auto &in = testCase.input;
-        auto actual = processRGBInt(grd, in.r, in.g, in.b);
+        auto actual = procModeRgb::processInt(grd, in.r, in.g, in.b);
         expectMatchingResult(actual, testCase);
     }
 }
@@ -113,7 +113,7 @@ TEST(Gradation, ShouldProcessFull)
         for (auto &curve : curves)
             ImportPoints(grd, curve.channel, curve.points, curve.count, curve.drawMode);
         auto &in = testCase.input;
-        auto actual = processFull(grd, in.r, in.g, in.b);
+        auto actual = procModeFull::processDouble(grd, in.r, in.g, in.b);
         expectMatchingResult(actual, testCase);
     }
 }
@@ -143,7 +143,7 @@ TEST(Gradation, ShouldProcessFullInt)
         for (auto &curve : curves)
             ImportPoints(grd, curve.channel, curve.points, curve.count, curve.drawMode);
         auto &in = testCase.input;
-        auto actual = processFullInt(grd, in.r, in.g, in.b);
+        auto actual = procModeFull::processInt(grd, in.r, in.g, in.b);
         expectMatchingResult(actual, testCase);
     }
 }

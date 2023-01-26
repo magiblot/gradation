@@ -61,6 +61,38 @@ void PreCalcLut(Gradation &grd) {
     }
 }
 
+template <class procMode>
+static inline RGB<uint8_t> processIntWithDoublePrecision(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+{
+    auto out = procMode::processDouble(grd, double(r), double(g), double(b));
+    return {
+        uint8_t(out.r + 0.5),
+        uint8_t(out.g + 0.5),
+        uint8_t(out.b + 0.5),
+    };
+}
+
+
+template <class procMode>
+static inline void processFrame(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_modulo, int32_t dst_modulo)
+{
+    for (int32_t h = 0; h < height; h++)
+    {
+        for (int32_t w = 0; w < width; w++)
+        {
+            uint32_t old_pixel = *src++;
+            auto in = unpackRGB(old_pixel);
+            auto out =
+                grd.precise ? processIntWithDoublePrecision<procMode>(grd, in.r, in.g, in.b)
+                            : procMode::processInt(grd, in.r, in.g, in.b);
+            uint32_t new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
+            *dst++ = new_pixel;
+        }
+        src = (uint32_t *)((char *)src + src_modulo);
+        dst = (uint32_t *)((char *)dst + dst_modulo);
+    }
+}
+
 void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uint32_t *dst, int32_t src_pitch, int32_t dst_pitch) {
     int32_t w, h;
 
@@ -86,38 +118,10 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
     switch(grd.process)
     {
     case PROCMODE_RGB:
-        for (h = 0; h < height; h++)
-        {
-            for (w = 0; w < width; w++)
-            {
-                old_pixel = *src++;
-                auto in = unpackRGB(old_pixel);
-                auto out =
-                    grd.precise ? processIntAsDouble<processRGB>(grd, in.r, in.g, in.b)
-                                : processRGBInt(grd, in.r, in.g, in.b);
-                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
-                *dst++ = new_pixel;
-            }
-            src = (uint32_t *)((char *)src + src_modulo);
-            dst = (uint32_t *)((char *)dst + dst_modulo);
-        }
+        processFrame<procModeRgb>(grd, width, height, src, dst, src_modulo, dst_modulo);
     break;
     case PROCMODE_FULL:
-        for (h = 0; h < height; h++)
-        {
-            for (w = 0; w < width; w++)
-            {
-                old_pixel = *src++;
-                auto in = unpackRGB(old_pixel);
-                auto out =
-                    grd.precise ? processIntAsDouble<processFull>(grd, in.r, in.g, in.b)
-                                : processFullInt(grd, in.r, in.g, in.b);
-                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
-                *dst++ = new_pixel;
-            }
-            src = (uint32_t *)((char *)src + src_modulo);
-            dst = (uint32_t *)((char *)dst + dst_modulo);
-        }
+        processFrame<procModeFull>(grd, width, height, src, dst, src_modulo, dst_modulo);
     break;
     case PROCMODE_RGBW:
         for (h = 0; h < height; h++)
@@ -180,21 +184,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
         }
     break;
     case PROCMODE_YUV:
-        for (h = 0; h < height; h++)
-        {
-            for (w = 0; w < width; w++)
-            {
-                old_pixel = *src++;
-                auto in = unpackRGB(old_pixel);
-                auto out =
-                    grd.precise ? processIntAsDouble<processYUV>(grd, in.r, in.g, in.b)
-                                : processYUVInt(grd, in.r, in.g, in.b);
-                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
-                *dst++ = new_pixel;
-            }
-            src = (uint32_t *)((char *)src + src_modulo);
-            dst = (uint32_t *)((char *)dst + dst_modulo);
-        }
+        processFrame<procModeYuv>(grd, width, height, src, dst, src_modulo, dst_modulo);
     break;
     case PROCMODE_CMYK:
         for (h = 0; h < height; h++)
@@ -246,21 +236,7 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
         }
     break;
     case PROCMODE_HSV:
-        for (h = 0; h < height; h++)
-        {
-            for (w = 0; w < width; w++)
-            {
-                old_pixel = *src++;
-                auto in = unpackRGB(old_pixel);
-                auto out =
-                    grd.precise ? processIntAsDouble<processHSV>(grd, in.r, in.g, in.b)
-                                : processHSVInt(grd, in.r, in.g, in.b);
-                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
-                *dst++ = new_pixel;
-            }
-            src = (uint32_t *)((char *)src + src_modulo);
-            dst = (uint32_t *)((char *)dst + dst_modulo);
-        }
+        processFrame<procModeHsv>(grd, width, height, src, dst, src_modulo, dst_modulo);
     break;
     case PROCMODE_LAB:
         for (h = 0; h < height; h++)
@@ -815,7 +791,7 @@ static inline double interpolateCurveValue(const double y[256], double x)
     return y[x1] + ff*(y[x2] - y[x1]);
 }
 
-RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+RGB<uint8_t> procModeRgb::processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
     return unpackRGB(
         grd.rvalue[0][r] +
@@ -824,7 +800,7 @@ RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b
     );
 }
 
-RGB<double> processRGB(const Gradation &grd, double r, double g, double b)
+RGB<double> procModeRgb::processDouble(const Gradation &grd, double r, double g, double b)
 {
     return {
         interpolateCurveValue(grd.ovaluef(0), r),
@@ -833,7 +809,7 @@ RGB<double> processRGB(const Gradation &grd, double r, double g, double b)
     };
 }
 
-RGB<uint8_t> processFullInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+RGB<uint8_t> procModeFull::processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
     auto med = unpackRGB(
         grd.rvalue[1][r] +
@@ -847,7 +823,7 @@ RGB<uint8_t> processFullInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t 
     );
 }
 
-RGB<double> processFull(const Gradation &grd, double r, double g, double b)
+RGB<double> procModeFull::processDouble(const Gradation &grd, double r, double g, double b)
 {
     RGB<double> med {
         interpolateCurveValue(grd.ovaluef(1), r),
@@ -861,7 +837,7 @@ RGB<double> processFull(const Gradation &grd, double r, double g, double b)
     };
 }
 
-RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+RGB<uint8_t> procModeHsv::processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
     // RGB to HSV
     uint8_t h, s, v;
@@ -932,7 +908,7 @@ RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b
     return {r, g, b};
 }
 
-RGB<double> processHSV(const Gradation &grd, double r, double g, double b)
+RGB<double> procModeHsv::processDouble(const Gradation &grd, double r, double g, double b)
 {
     auto hsv = rgb2hsv(r, g, b);
     auto rgb = hsv2rgb(
@@ -999,7 +975,7 @@ static RGB<double> hsv2rgb(double h, double s, double v)
     }
 }
 
-RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+RGB<uint8_t> procModeYuv::processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
 {
     //RGB to YUV (x=Y y=U z=V)
     int x, y, z;
@@ -1021,7 +997,7 @@ RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b
     };
 }
 
-RGB<double> processYUV(const Gradation &grd, double r, double g, double b)
+RGB<double> procModeYuv::processDouble(const Gradation &grd, double r, double g, double b)
 {
     auto yuv = rgb2yuv(r, g, b);
     auto rgb = yuv2rgb(

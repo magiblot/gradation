@@ -234,25 +234,28 @@ inline uint32_t packRGB(RGB<uint8_t> p)
     return ((p.r << 16) + (p.g << 8) + p.b);
 }
 
-template <RGB<double> (&process)(const Gradation &, double, double, double)>
-inline RGB<uint8_t> processIntAsDouble(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+struct procModeRgb
 {
-    auto out = process(grd, double(r), double(g), double(b));
-    return {
-        uint8_t(out.r + 0.5),
-        uint8_t(out.g + 0.5),
-        uint8_t(out.b + 0.5),
-    };
-}
+    static RGB<uint8_t> processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+    static RGB<double> processDouble(const Gradation &grd, double r, double g, double b);
+};
 
-RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
-RGB<uint8_t> processFullInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
-RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
-RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+struct procModeFull
+{
+    static RGB<uint8_t> processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+    static RGB<double> processDouble(const Gradation &grd, double r, double g, double b);
+};
 
-RGB<double> processRGB(const Gradation &grd, double r, double g, double b);
-RGB<double> processFull(const Gradation &grd, double r, double g, double b);
-RGB<double> processHSV(const Gradation &grd, double r, double g, double b);
-RGB<double> processYUV(const Gradation &grd, double r, double g, double b);
+struct procModeYuv
+{
+    static RGB<uint8_t> processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+    static RGB<double> processDouble(const Gradation &grd, double r, double g, double b);
+};
+
+struct procModeHsv
+{
+    static RGB<uint8_t> processInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+    static RGB<double> processDouble(const Gradation &grd, double r, double g, double b);
+};
 
 #endif // GRADATION_MAIN_H
