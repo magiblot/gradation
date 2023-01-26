@@ -197,6 +197,18 @@ FrameProcesser &GradationFilter::getFrameProcesser(const VideoInfo &vi, IScriptE
     abort();
 }
 
+#ifdef _MSC_VER
+// Work around MSVC bug (https://developercommunity.visualstudio.com/t/C-compiler-bug:-unable-to-use-static-m/10262063).
+template <class procMode>
+static RGB<double> processDouble(const Gradation &grd, double r, double g, double b)
+{
+    return procMode::processDouble(grd, r, g, b);
+}
+#else
+template <class procMode>
+constexpr auto &processDouble = procMode::processDouble;
+#endif
+
 static void runGradationOld(const Gradation &grd, int width, int height, int, const PVideoFrame &src, const PVideoFrame &dst)
 // Pre: clip is RGB32.
 {
@@ -238,10 +250,10 @@ AVSValue __cdecl GradationFilter::Create(AVSValue args, void *, IScriptEnvironme
     if (precise)
         switch (grd->process)
         {
-            case PROCMODE_RGB: return new GradationFilter(child, grd, getFrameProcesser<procModeRgb::processDouble>(vi, env));
-            case PROCMODE_FULL: return new GradationFilter(child, grd, getFrameProcesser<procModeFull::processDouble>(vi, env));
-            case PROCMODE_YUV: return new GradationFilter(child, grd, getFrameProcesser<procModeYuv::processDouble>(vi, env));
-            case PROCMODE_HSV: return new GradationFilter(child, grd, getFrameProcesser<procModeHsv::processDouble>(vi, env));
+            case PROCMODE_RGB: return new GradationFilter(child, grd, getFrameProcesser<processDouble<procModeRgb>>(vi, env));
+            case PROCMODE_FULL: return new GradationFilter(child, grd, getFrameProcesser<processDouble<procModeFull>>(vi, env));
+            case PROCMODE_YUV: return new GradationFilter(child, grd, getFrameProcesser<processDouble<procModeYuv>>(vi, env));
+            case PROCMODE_HSV: return new GradationFilter(child, grd, getFrameProcesser<processDouble<procModeHsv>>(vi, env));
             default: env->ThrowError("%s: 'precise' not supported for processing mode '%s'", Name(), args[iProcess].AsString());
         }
 
