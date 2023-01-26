@@ -108,9 +108,12 @@ void Run(const Gradation &grd, int32_t width, int32_t height, uint32_t *src, uin
             for (w = 0; w < width; w++)
             {
                 old_pixel = *src++;
-                med_pixel = grd.rvalue[1][(old_pixel & 0xFF0000)>>16] + grd.gvalue[1][(old_pixel & 0x00FF00)>>8] + grd.ovalue(3, old_pixel & 0x0000FF);
-                new_pixel = grd.rvalue[0][(med_pixel & 0xFF0000)>>16] + grd.gvalue[0][(med_pixel & 0x00FF00)>>8] + grd.ovalue(0, med_pixel & 0x0000FF);
-                *dst++ = new_pixel | (old_pixel & 0xFF000000U);
+                auto in = unpackRGB(old_pixel);
+                auto out =
+                    grd.precise ? processIntAsDouble<processFull>(grd, in.r, in.g, in.b)
+                                : processFullInt(grd, in.r, in.g, in.b);
+                new_pixel = packRGB(out) | (old_pixel & 0xFF000000U);
+                *dst++ = new_pixel;
             }
             src = (uint32_t *)((char *)src + src_modulo);
             dst = (uint32_t *)((char *)dst + dst_modulo);
@@ -827,6 +830,34 @@ RGB<double> processRGB(const Gradation &grd, double r, double g, double b)
         interpolateCurveValue(grd.ovaluef(0), r),
         interpolateCurveValue(grd.ovaluef(0), g),
         interpolateCurveValue(grd.ovaluef(0), b),
+    };
+}
+
+RGB<uint8_t> processFullInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b)
+{
+    auto med = unpackRGB(
+        grd.rvalue[1][r] +
+        grd.gvalue[1][g] +
+        grd.ovalue(3, b)
+    );
+    return unpackRGB(
+        grd.rvalue[0][med.r] +
+        grd.gvalue[0][med.g] +
+        grd.ovalue(0, med.b)
+    );
+}
+
+RGB<double> processFull(const Gradation &grd, double r, double g, double b)
+{
+    RGB<double> med {
+        interpolateCurveValue(grd.ovaluef(1), r),
+        interpolateCurveValue(grd.ovaluef(2), g),
+        interpolateCurveValue(grd.ovaluef(3), b),
+    };
+    return {
+        interpolateCurveValue(grd.ovaluef(0), med.r),
+        interpolateCurveValue(grd.ovaluef(0), med.g),
+        interpolateCurveValue(grd.ovaluef(0), med.b),
     };
 }
 

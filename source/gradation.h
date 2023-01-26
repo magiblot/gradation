@@ -246,10 +246,12 @@ inline RGB<uint8_t> processIntAsDouble(const Gradation &grd, uint8_t r, uint8_t 
 }
 
 RGB<uint8_t> processRGBInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
+RGB<uint8_t> processFullInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 RGB<uint8_t> processHSVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 RGB<uint8_t> processYUVInt(const Gradation &grd, uint8_t r, uint8_t g, uint8_t b);
 
 RGB<double> processRGB(const Gradation &grd, double r, double g, double b);
+RGB<double> processFull(const Gradation &grd, double r, double g, double b);
 RGB<double> processHSV(const Gradation &grd, double r, double g, double b);
 RGB<double> processYUV(const Gradation &grd, double r, double g, double b);
 
